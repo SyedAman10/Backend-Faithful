@@ -1,0 +1,25 @@
+# Copy this file to .env and fill in your actual values
+
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID=285138278499-m598ekgrscr6vimc25736gv6liojaeou.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+
+# JWT Configuration
+JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random
+JWT_EXPIRES_IN=7d
+
+# Database Configuration
+DATABASE_URL=your_neon_postgresql_connection_string_here
+
+# Environment Configuration
+NODE_ENV=development
+
+# URL Configuration
+BACKEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:3000
+
+# Expo Configuration (for mobile auth)
+EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
+
+# CORS Configuration
+ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002
