@@ -23,3 +23,7 @@ EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
 
 # CORS Configuration
 ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002
+
+# Mobile Authentication Logging (optional - for enhanced debugging)
+LOG_LEVEL=debug
+ENABLE_DETAILED_LOGGING=true
