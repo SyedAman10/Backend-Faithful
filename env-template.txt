@@ -14,16 +14,19 @@ DATABASE_URL=your_neon_postgresql_connection_string_here
 # Environment Configuration
 NODE_ENV=development
 
-# URL Configuration
-BACKEND_URL=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
+# URL Configuration (Use ngrok URL for mobile testing)
+BACKEND_URL=https://1befd1562ae3.ngrok-free.app
+FRONTEND_URL=https://1befd1562ae3.ngrok-free.app
 
 # Expo Configuration (for mobile auth)
 EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
 
 # CORS Configuration
-ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002
+ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002,https://1befd1562ae3.ngrok-free.app
 
 # Mobile Authentication Logging (optional - for enhanced debugging)
 LOG_LEVEL=debug
 ENABLE_DETAILED_LOGGING=true
+
+# IMPORTANT: Add this redirect URI to Google Cloud Console OAuth 2.0 client:
+# https://1befd1562ae3.ngrok-free.app/api/auth/google/mobile-callback

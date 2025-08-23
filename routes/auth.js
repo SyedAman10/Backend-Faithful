@@ -12,6 +12,7 @@ const getBackendUrl = () => {
   if (process.env.NODE_ENV === 'production') {
     return process.env.BACKEND_URL || 'https://your-production-domain.com';
   }
+  // For development, use BACKEND_URL if set (like ngrok), otherwise fallback to localhost
   return process.env.BACKEND_URL || 'http://localhost:3000';
 };
 
