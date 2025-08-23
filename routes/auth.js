@@ -10,7 +10,7 @@ const router = express.Router();
 // Dynamic URLs based on environment
 const getBackendUrl = () => {
   if (process.env.NODE_ENV === 'production') {
-    return process.env.BACKEND_URL || 'https://your-production-domain.com';
+    return process.env.BACKEND_URL || 'http://152.53.190.3:3000';
   }
   return process.env.BACKEND_URL || 'http://localhost:3000';
 };

@@ -4,7 +4,7 @@
 
 ### 1. **Backend Callback URL** (Google OAuth redirects here)
 ```
-http://localhost:3000/api/auth/google/mobile-callback
+http://152.53.190.3:3000/api/auth/google/mobile-callback
 ```
 
 **What happens here:**
@@ -26,14 +26,14 @@ exp://127.0.0.1:8081/--/auth/callback
 
 ### Step 1: Get OAuth URL
 ```
-GET /api/auth/google/url?platform=mobile
+GET http://152.53.190.3:3000/api/auth/google/url?platform=mobile
 ```
-**Response:** Google OAuth URL with `redirect_uri=http://localhost:3000/api/auth/google/mobile-callback`
+**Response:** Google OAuth URL with `redirect_uri=http://152.53.190.3:3000/api/auth/google/mobile-callback`
 
 ### Step 2: User Authorizes with Google
 - Mobile app opens Google OAuth URL in WebView/browser
 - User signs in and authorizes your app
-- Google redirects to: `http://localhost:3000/api/auth/google/mobile-callback?code=AUTHORIZATION_CODE`
+- Google redirects to: `http://152.53.190.3:3000/api/auth/google/mobile-callback?code=AUTHORIZATION_CODE`
 
 ### Step 3: Backend Processes Callback
 - Backend receives the authorization code
@@ -41,7 +41,7 @@ GET /api/auth/google/url?platform=mobile
 
 ### Step 4: Mobile App Completes Authentication
 ```
-POST /api/auth/google/mobile
+POST http://152.53.190.3:3000/api/auth/google/mobile
 Body: { "code": "AUTHORIZATION_CODE" }
 ```
 **Response:** JWT token + user data
@@ -99,30 +99,30 @@ Body: { "code": "AUTHORIZATION_CODE" }
 
 ```bash
 # Google OAuth
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CLIENT_ID=1019455265952-8k2njj865hs65mthr0ghn92fblt3rq30.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 
 # JWT
-JWT_SECRET=your_jwt_secret
+JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random
 JWT_EXPIRES_IN=7d
 
 # Mobile App
 EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
 
 # Backend URLs
-BACKEND_URL=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://152.53.190.3:3000
+FRONTEND_URL=http://152.53.190.3:3000
 ```
 
 ## 🔧 Google Cloud Console Configuration
 
 ### Authorized Redirect URIs:
-1. `http://localhost:3000/api/auth/google/mobile-callback` (Development)
-2. `https://yourdomain.com/api/auth/google/mobile-callback` (Production)
+1. `http://152.53.190.3:3000/api/auth/google/mobile-callback` (Production)
+2. `http://localhost:3000/api/auth/google/mobile-callback` (Development)
 
 ### Authorized JavaScript Origins:
-1. `http://localhost:3000` (Development)
-2. `https://yourdomain.com` (Production)
+1. `http://152.53.190.3:3000` (Production)
+2. `http://localhost:3000` (Development)
 
 ## 📊 Performance Monitoring
 
@@ -163,7 +163,7 @@ The logging system tracks:
 
 ```javascript
 // Get OAuth URL
-const response = await fetch('http://localhost:3000/api/auth/google/url?platform=mobile');
+const response = await fetch('http://152.53.190.3:3000/api/auth/google/url?platform=mobile');
 const { url } = await response.json();
 
 // Open OAuth in WebView
@@ -175,7 +175,7 @@ if (result.type === 'success') {
   const code = urlParams.get('code');
   
   // Complete authentication
-  const authResponse = await fetch('http://localhost:3000/api/auth/google/mobile', {
+  const authResponse = await fetch('http://152.53.190.3:3000/api/auth/google/mobile', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code })
