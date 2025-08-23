@@ -68,24 +68,53 @@ const handleUserAuth = async (userInfo, tokens) => {
   const name = userInfo.name;
   const picture = userInfo.picture;
   
-  console.log('✅ Extracted user data:', { googleId, email, name, picture });
+  console.log('✅ Extracted user data:', { 
+    googleId: googleId.substring(0, 10) + '...', 
+    email, 
+    name, 
+    hasPicture: !!picture 
+  });
+  
+  console.log('🔍 Checking if user exists in database...');
+  const dbStartTime = Date.now();
   
   // Check if user exists
   let result = await pool.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
   let user;
+  
+  const dbQueryTime = Date.now() - dbStartTime;
+  console.log('📊 Database Query Result:', {
+    userFound: result.rows.length > 0,
+    queryTime: `${dbQueryTime}ms`,
+    timestamp: new Date().toISOString()
+  });
 
   if (result.rows.length === 0) {
     // Create new user
+    console.log('🆕 Creating new user in database...');
+    const insertStartTime = Date.now();
+    
     const insertResult = await pool.query(
       `INSERT INTO users (google_id, email, name, picture, google_access_token, google_refresh_token) 
        VALUES ($1, $2, $3, $4, $5, $6) 
        RETURNING *`,
       [googleId, email, name, picture, tokens.access_token, tokens.refresh_token]
     );
+    
+    const insertTime = Date.now() - insertStartTime;
     user = insertResult.rows[0];
-    console.log('✅ New user created:', email);
+    
+    console.log('✅ New user created:', {
+      userId: user.id,
+      email: user.email,
+      insertTime: `${insertTime}ms`,
+      timestamp: new Date().toISOString()
+    });
   } else {
     // Update existing user
+    console.log('🔄 Updating existing user in database...');
+    const updateStartTime = Date.now();
+    
     const updateResult = await pool.query(
       `UPDATE users 
        SET name = $1, picture = $2, google_access_token = $3, google_refresh_token = $4, updated_at = CURRENT_TIMESTAMP 
@@ -93,18 +122,36 @@ const handleUserAuth = async (userInfo, tokens) => {
        RETURNING *`,
       [name, picture, tokens.access_token, tokens.refresh_token, googleId]
     );
+    
+    const updateTime = Date.now() - updateStartTime;
     user = updateResult.rows[0];
-    console.log('✅ Existing user updated:', email);
+    
+    console.log('✅ Existing user updated:', {
+      userId: user.id,
+      email: user.email,
+      updateTime: `${updateTime}ms`,
+      timestamp: new Date().toISOString()
+    });
   }
 
+  console.log('🔐 Generating JWT token...');
+  const jwtStartTime = Date.now();
+  
   // Generate JWT token
   const token = jwt.sign(
     { userId: user.id, email: user.email },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
+  
+  const jwtTime = Date.now() - jwtStartTime;
+  console.log('✅ JWT token generated:', {
+    tokenLength: token.length,
+    jwtTime: `${jwtTime}ms`,
+    timestamp: new Date().toISOString()
+  });
 
-  return {
+  const authResult = {
     token,
     userData: {
       id: user.id,
@@ -114,14 +161,39 @@ const handleUserAuth = async (userInfo, tokens) => {
       googleMeetAccess: user.google_meet_access
     }
   };
+  
+  console.log('🎯 handleUserAuth completed successfully:', {
+    userId: authResult.userData.id,
+    email: authResult.userData.email,
+    hasToken: !!authResult.token,
+    totalTime: `${Date.now() - dbStartTime}ms`,
+    timestamp: new Date().toISOString()
+  });
+
+  return authResult;
 };
 
 // Get Google OAuth URL
 router.get('/google/url', (req, res) => {
   const { platform } = req.query;
   
+  console.log('🚀 OAuth URL Request:', {
+    platform: platform || 'web',
+    userAgent: req.headers['user-agent'],
+    accept: req.headers['accept'],
+    timestamp: new Date().toISOString()
+  });
+  
   // Use different OAuth client based on platform
   const oauthClient = platform === 'mobile' ? mobileOAuthClient : webOAuthClient;
+  
+  console.log('🔧 OAuth Client Selected:', {
+    platform: platform || 'web',
+    clientType: platform === 'mobile' ? 'mobileOAuthClient' : 'webOAuthClient',
+    redirectUri: platform === 'mobile' ? 
+      `${getBackendUrl()}/api/auth/google/mobile-callback` : 
+      getCallbackUrl()
+  });
 
   const url = oauthClient.generateAuthUrl({
     access_type: 'offline',
@@ -136,7 +208,10 @@ router.get('/google/url', (req, res) => {
   
   console.log('🔗 Generated OAuth URL:', {
     platform: platform || 'web',
-    url: url
+    url: url,
+    urlLength: url.length,
+    containsRedirectUri: url.includes('redirect_uri'),
+    timestamp: new Date().toISOString()
   });
   
   res.json({ url });
@@ -187,8 +262,39 @@ router.get('/google/callback', async (req, res) => {
 
 // Mobile OAuth callback
 router.get('/google/mobile-callback', async (req, res) => {
+  console.log('📱 Mobile Callback Received:', {
+    method: req.method,
+    url: req.url,
+    query: req.query,
+    headers: {
+      'user-agent': req.headers['user-agent'],
+      'accept': req.headers['accept'],
+      'referer': req.headers['referer']
+    },
+    timestamp: new Date().toISOString()
+  });
+
   try {
-    const { code } = req.query;
+    const { code, error: googleError, state } = req.query;
+    
+    console.log('🔍 Callback Parameters:', {
+      code: code ? `${code.substring(0, 10)}...` : 'missing',
+      codeLength: code ? code.length : 0,
+      googleError: googleError || 'none',
+      state: state || 'none',
+      hasCode: !!code
+    });
+
+    // Check for Google OAuth errors
+    if (googleError) {
+      console.log('❌ Google OAuth Error:', {
+        error: googleError,
+        timestamp: new Date().toISOString()
+      });
+      const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/auth/callback';
+      return res.redirect(`${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
+    }
+    
     console.log('Mobile callback received:', { code });
     
     // Use environment variable for Expo return URL, fallback to localhost:8081
@@ -209,20 +315,29 @@ router.get('/google/mobile-callback', async (req, res) => {
     // Check if the request wants JSON response
     const wantsJson = req.headers['accept'] && req.headers['accept'].includes('application/json');
     
+    console.log('📋 Response Type Check:', {
+      wantsJson: wantsJson,
+      acceptHeader: req.headers['accept'],
+      willReturnJson: wantsJson
+    });
+    
     if (wantsJson) {
       console.log('📱 Mobile app requested JSON response');
-      return res.json({
+      const jsonResponse = {
         success: true,
         code: code,
         redirectUrl: `${EXPO_RETURN_URL}?code=${encodeURIComponent(code)}`,
         message: 'Authorization code received successfully'
-      });
+      };
+      console.log('📤 Sending JSON Response:', jsonResponse);
+      return res.json(jsonResponse);
     }
 
     // Redirect to Expo return URL with code
     console.log('✅ Code received, redirecting to Expo with code');
     const redirectUrl = `${EXPO_RETURN_URL}?code=${encodeURIComponent(code)}`;
     console.log('🔄 Full redirect URL:', redirectUrl);
+    console.log('🔄 Redirect URL Length:', redirectUrl.length);
     
     return res.redirect(redirectUrl);
   } catch (error) {
@@ -233,53 +348,130 @@ router.get('/google/mobile-callback', async (req, res) => {
     const wantsJson = req.headers['accept'] && req.headers['accept'].includes('application/json');
     
     if (wantsJson) {
-      return res.json({
+      const errorResponse = {
         success: false,
         error: 'AuthFailed',
         message: error.message,
         redirectUrl: `${EXPO_RETURN_URL}?error=AuthFailed&message=${encodeURIComponent(error.message)}`
-      });
+      };
+      console.log('📤 Sending Error JSON Response:', errorResponse);
+      return res.json(errorResponse);
     }
     
-    return res.redirect(`${EXPO_RETURN_URL}?error=AuthFailed&message=${encodeURIComponent(error.message)}`);
+    const errorRedirectUrl = `${EXPO_RETURN_URL}?error=AuthFailed&message=${encodeURIComponent(error.message)}`;
+    console.log('🔄 Error Redirect URL:', errorRedirectUrl);
+    return res.redirect(errorRedirectUrl);
   }
 });
 
 // Mobile authentication with authorization code
 router.post('/google/mobile', async (req, res) => {
+  console.log('📱 Mobile Authentication Request:', {
+    method: req.method,
+    url: req.url,
+    body: req.body,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent']
+    },
+    timestamp: new Date().toISOString()
+  });
+
   try {
     const { code } = req.body;
     
+    console.log('🔍 Request Body Analysis:', {
+      hasCode: !!code,
+      codeLength: code ? code.length : 0,
+      codePreview: code ? `${code.substring(0, 10)}...` : 'missing',
+      bodyKeys: Object.keys(req.body)
+    });
+    
     if (!code) {
+      console.log('❌ Missing authorization code');
       return res.status(400).json({
         success: false,
         error: 'Authorization code is required'
       });
     }
+
+    console.log('🔄 Starting token exchange with Google...');
+    const startTime = Date.now();
     
     const { tokens } = await mobileOAuthClient.getToken(code);
-    mobileOAuthClient.setCredentials(tokens);
+    const tokenTime = Date.now() - startTime;
+    
+    console.log('🔑 Google Tokens Received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      accessTokenLength: tokens.access_token ? tokens.access_token.length : 0,
+      refreshTokenLength: tokens.refresh_token ? tokens.refresh_token.length : 0,
+      tokenExchangeTime: `${tokenTime}ms`,
+      timestamp: new Date().toISOString()
+    });
 
+    mobileOAuthClient.setCredentials(tokens);
+    console.log('✅ OAuth client credentials set');
+
+    console.log('👤 Fetching user info from Google...');
+    const userInfoStartTime = Date.now();
+    
     const oauth2 = google.oauth2({ auth: mobileOAuthClient, version: 'v2' });
     const { data: userInfo } = await oauth2.userinfo.get();
     
+    const userInfoTime = Date.now() - userInfoStartTime;
+    console.log('👤 User Info Received:', {
+      email: userInfo.email,
+      name: userInfo.name,
+      hasPicture: !!userInfo.picture,
+      pictureUrl: userInfo.picture ? `${userInfo.picture.substring(0, 50)}...` : 'none',
+      userInfoFetchTime: `${userInfoTime}ms`,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log('💾 Processing user authentication...');
+    const userAuthStartTime = Date.now();
+    
     const user = await handleUserAuth(userInfo, tokens);
-
-    console.log('✅ Mobile Auth Successful:', {
+    
+    const userAuthTime = Date.now() - userAuthStartTime;
+    console.log('✅ User Authentication Complete:', {
+      userId: user.userData.id,
       email: user.userData.email,
-      tokenLength: user.token.length
+      name: user.userData.name,
+      hasPicture: !!user.userData.picture,
+      tokenLength: user.token.length,
+      userAuthTime: `${userAuthTime}ms`,
+      totalTime: `${Date.now() - startTime}ms`,
+      timestamp: new Date().toISOString()
     });
 
-    res.json({
+    const response = {
       success: true,
       token: user.token,
       user: user.userData
+    };
+    
+    console.log('📤 Sending Success Response:', {
+      success: response.success,
+      hasToken: !!response.token,
+      tokenLength: response.token.length,
+      userEmail: response.user.email,
+      timestamp: new Date().toISOString()
     });
+
+    res.json(response);
   } catch (error) {
-    console.error('Mobile auth error:', error);
+    console.error('❌ Mobile auth error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
     res.status(401).json({
       success: false,
-      error: 'Authentication failed'
+      error: 'Authentication failed',
+      message: error.message
     });
   }
 });
