@@ -7,10 +7,15 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const usageRoutes = require('./routes/usage');
+const studyGroupRoutes = require('./routes/study-groups');
 const { initializeDatabase } = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Trust proxy for rate limiting behind ngrok
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
@@ -26,12 +31,13 @@ app.use(limiter);
 // Logging
 app.use(morgan('combined'));
 
-// CORS configuration for Expo
+// CORS configuration for Expo and ngrok
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS?.split(',') || [
     'http://localhost:19000',
     'http://localhost:19001',
-    'http://localhost:19002'
+    'http://localhost:19002',
+    'https://1befd1562ae3.ngrok-free.app'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -49,13 +55,22 @@ initializeDatabase();
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/usage', usageRoutes);
+app.use('/api/study-groups', studyGroupRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV 
+    environment: process.env.NODE_ENV,
+    backendUrl: process.env.BACKEND_URL || 'http://localhost:3000',
+    apis: [
+      'Authentication: /api/auth',
+      'Users: /api/users', 
+      'Usage Tracking: /api/usage',
+      'Study Groups: /api/study-groups'
+    ]
   });
 });
 
@@ -74,8 +89,11 @@ app.use('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+  console.log(`🔗 Backend URL: ${process.env.BACKEND_URL || 'http://localhost:3000'}`);
+  console.log(`📊 Usage tracking API: /api/usage`);
+  console.log(`📚 Study Groups API: /api/study-groups`);
 });
 
 module.exports = app;

@@ -20,7 +20,8 @@
         "jsonwebtoken": "^9.0.2",
         "morgan": "^1.10.0",
         "node-fetch": "^3.3.2",
-        "pg": "^8.11.3"
+        "pg": "^8.11.3",
+        "uuid": "^9.0.1"
     },
     "devDependencies": {
         "nodemon": "^3.0.2"
@@ -30,7 +31,8 @@
         "neon",
         "postgresql",
         "expo",
-        "react-native"
+        "react-native",
+        "usage-tracking"
     ],
     "author": "Your Name",
     "license": "MIT"

@@ -202,7 +202,7 @@ router.get('/google/url', (req, res) => {
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
       'https://www.googleapis.com/auth/calendar',
-      'https://www.googleapis.com/auth/meetings'
+      'https://www.googleapis.com/auth/calendar.events'
     ],
     prompt: 'consent'
   });
