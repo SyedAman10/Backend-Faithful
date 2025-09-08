@@ -154,8 +154,150 @@ const createGoogleCalendarEvent = async (userId, eventData) => {
   }
 };
 
+// Update Google Calendar event
+const updateGoogleCalendarEvent = async (userId, eventId, eventData) => {
+  try {
+    const accessToken = await getValidAccessToken(userId);
+    
+    const oauth2Client = createOAuthClient();
+    oauth2Client.setCredentials({ access_token: accessToken });
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    
+    const event = {
+      summary: eventData.title,
+      description: eventData.description || `Study Group: ${eventData.title}`,
+      start: {
+        dateTime: eventData.startTime,
+        timeZone: eventData.timeZone || 'UTC',
+      },
+      end: {
+        dateTime: eventData.endTime,
+        timeZone: eventData.timeZone || 'UTC',
+      },
+      attendees: eventData.attendees || [],
+      conferenceData: {
+        createRequest: {
+          requestId: eventData.requestId || `study-group-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          conferenceSolutionKey: {
+            type: 'hangoutsMeet'
+          }
+        }
+      },
+      guestsCanModify: false,
+      guestsCanInviteOthers: false,
+      guestsCanSeeOtherGuests: true
+    };
+
+    // Add recurrence if specified
+    if (eventData.recurrence) {
+      event.recurrence = eventData.recurrence;
+    }
+
+    console.log('📅 Updating Google Calendar event:', {
+      eventId: eventId,
+      title: eventData.title,
+      startTime: eventData.startTime,
+      endTime: eventData.endTime,
+      attendees: eventData.attendees?.length || 0,
+      isRecurring: !!eventData.recurrence
+    });
+
+    const response = await calendar.events.update({
+      calendarId: 'primary',
+      eventId: eventId,
+      resource: event,
+      conferenceDataVersion: 1,
+      sendUpdates: 'all'
+    });
+
+    console.log('✅ Google Calendar event updated successfully:', {
+      eventId: response.data.id,
+      meetId: response.data.conferenceData?.conferenceId,
+      meetLink: response.data.hangoutLink
+    });
+
+    return {
+      meetId: response.data.conferenceData?.conferenceId,
+      meetLink: response.data.hangoutLink,
+      eventId: response.data.id,
+      attendees: response.data.attendees || []
+    };
+  } catch (error) {
+    console.error('❌ Failed to update Google Calendar event:', error.message);
+    throw error;
+  }
+};
+
+// Delete Google Calendar event
+const deleteGoogleCalendarEvent = async (userId, eventId) => {
+  try {
+    const accessToken = await getValidAccessToken(userId);
+    
+    const oauth2Client = createOAuthClient();
+    oauth2Client.setCredentials({ access_token: accessToken });
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    
+    console.log('🗑️ Deleting Google Calendar event:', {
+      eventId: eventId,
+      userId: userId
+    });
+
+    // First, try to get the event to check if it exists
+    try {
+      await calendar.events.get({
+        calendarId: 'primary',
+        eventId: eventId
+      });
+      console.log('✅ Event exists, proceeding with deletion');
+    } catch (getError) {
+      if (getError.code === 404) {
+        console.log('⚠️ Event not found in Google Calendar, it may have been already deleted');
+        // Event doesn't exist, consider this a success
+        return { success: true, message: 'Event not found (already deleted)' };
+      } else {
+        throw getError;
+      }
+    }
+
+    // Delete the event
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId: eventId,
+      sendUpdates: 'all'
+    });
+
+    console.log('✅ Google Calendar event deleted successfully:', {
+      eventId: eventId
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Failed to delete Google Calendar event:', {
+      error: error.message,
+      code: error.code,
+      eventId: eventId,
+      userId: userId
+    });
+    
+    // Provide more specific error messages
+    if (error.code === 404) {
+      throw new Error('Google Calendar event not found. It may have been already deleted or moved.');
+    } else if (error.code === 403) {
+      throw new Error('Insufficient permissions to delete Google Calendar event. Please check your Google Calendar access.');
+    } else if (error.code === 401) {
+      throw new Error('Google Calendar authentication expired. Please re-authenticate with Google.');
+    } else {
+      throw new Error(`Google Calendar deletion failed: ${error.message}`);
+    }
+  }
+};
+
 module.exports = {
   getValidAccessToken,
   createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
   refreshAccessToken
 };

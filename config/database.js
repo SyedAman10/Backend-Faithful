@@ -129,6 +129,15 @@ const initializeDatabase = async () => {
       console.log('ℹ️ next_occurrence column already exists or could not be added');
     }
 
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ADD COLUMN IF NOT EXISTS requires_approval BOOLEAN DEFAULT TRUE
+      `);
+    } catch (error) {
+      console.log('ℹ️ requires_approval column already exists or could not be added');
+    }
+
     // Create recurring_meetings table if not exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS recurring_meetings (
@@ -160,6 +169,24 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Create study_group_join_requests table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS study_group_join_requests (
+        id SERIAL PRIMARY KEY,
+        group_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'accepted', 'rejected'
+        message TEXT, -- Optional message from requester
+        requested_at TIMESTAMP DEFAULT NOW(),
+        responded_at TIMESTAMP,
+        responded_by INTEGER, -- User ID who responded (group owner/admin)
+        FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (responded_by) REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE(group_id, user_id) -- One request per user per group
+      )
+    `);
+
     // Create indexes for better performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)
@@ -183,6 +210,18 @@ const initializeDatabase = async () => {
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_study_group_members_user_id ON study_group_members(user_id)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_study_group_join_requests_group_id ON study_group_join_requests(group_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_study_group_join_requests_user_id ON study_group_join_requests(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_study_group_join_requests_status ON study_group_join_requests(status)
     `);
 
     // Create indexes for recurring meetings (only after columns exist)

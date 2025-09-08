@@ -313,6 +313,58 @@ router.get('/google/mobile-callback', async (req, res) => {
       return res.redirect(`${EXPO_RETURN_URL}?error=InvalidCode`);
     }
 
+    // Exchange code for tokens and generate JWT
+    console.log('🔄 Starting token exchange with Google...');
+    const startTime = Date.now();
+    
+    const { tokens } = await mobileOAuthClient.getToken(code);
+    const tokenTime = Date.now() - startTime;
+    
+    console.log('🔑 Google Tokens Received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      accessTokenLength: tokens.access_token ? tokens.access_token.length : 0,
+      refreshTokenLength: tokens.refresh_token ? tokens.refresh_token.length : 0,
+      tokenExchangeTime: `${tokenTime}ms`,
+      timestamp: new Date().toISOString()
+    });
+
+    mobileOAuthClient.setCredentials(tokens);
+    console.log('✅ OAuth client credentials set');
+
+    console.log('👤 Fetching user info from Google...');
+    const userInfoStartTime = Date.now();
+    
+    const oauth2 = google.oauth2({ auth: mobileOAuthClient, version: 'v2' });
+    const { data: userInfo } = await oauth2.userinfo.get();
+    
+    const userInfoTime = Date.now() - userInfoStartTime;
+    console.log('👤 User Info Received:', {
+      email: userInfo.email,
+      name: userInfo.name,
+      hasPicture: !!userInfo.picture,
+      pictureUrl: userInfo.picture ? `${userInfo.picture.substring(0, 50)}...` : 'none',
+      userInfoFetchTime: `${userInfoTime}ms`,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log('💾 Processing user authentication...');
+    const userAuthStartTime = Date.now();
+    
+    const user = await handleUserAuth(userInfo, tokens);
+    
+    const userAuthTime = Date.now() - userAuthStartTime;
+    console.log('✅ User Authentication Complete:', {
+      userId: user.userData.id,
+      email: user.userData.email,
+      name: user.userData.name,
+      hasPicture: !!user.userData.picture,
+      tokenLength: user.token.length,
+      userAuthTime: `${userAuthTime}ms`,
+      totalTime: `${Date.now() - startTime}ms`,
+      timestamp: new Date().toISOString()
+    });
+
     // Check if the request wants JSON response
     const wantsJson = req.headers['accept'] && req.headers['accept'].includes('application/json');
     
@@ -326,23 +378,34 @@ router.get('/google/mobile-callback', async (req, res) => {
       console.log('📱 Mobile app requested JSON response');
       const jsonResponse = {
         success: true,
-        code: code,
-        redirectUrl: `${EXPO_RETURN_URL}?code=${encodeURIComponent(code)}`,
-        message: 'Authorization code received successfully'
+        token: user.token,
+        user: user.userData,
+        message: 'Authentication successful'
       };
-      console.log('📤 Sending JSON Response:', jsonResponse);
+      console.log('📤 Sending JSON Response with JWT token');
       return res.json(jsonResponse);
     }
 
-    // Redirect to Expo return URL with code
-    console.log('✅ Code received, redirecting to Expo with code');
-    const redirectUrl = `${EXPO_RETURN_URL}?code=${encodeURIComponent(code)}`;
-    console.log('🔄 Full redirect URL:', redirectUrl);
-    console.log('🔄 Redirect URL Length:', redirectUrl.length);
+    // Redirect to Expo return URL with JWT token and user data
+    console.log('✅ Authentication successful, redirecting to Expo with JWT token');
+    const redirectUrl = new URL(EXPO_RETURN_URL);
+    redirectUrl.searchParams.set('token', user.token);
+    redirectUrl.searchParams.set('name', user.userData.name);
+    redirectUrl.searchParams.set('email', user.userData.email);
+    redirectUrl.searchParams.set('picture', user.userData.picture || '');
+    redirectUrl.searchParams.set('userId', user.userData.id);
     
-    return res.redirect(redirectUrl);
+    console.log('🔄 Full redirect URL with token:', redirectUrl.toString());
+    console.log('🔄 Redirect URL Length:', redirectUrl.toString().length);
+    
+    return res.redirect(redirectUrl.toString());
   } catch (error) {
-    console.error('Mobile callback error:', error);
+    console.error('❌ Mobile callback error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
     const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/auth/callback';
     console.log('❌ Error occurred, redirecting to Expo with error');
     
