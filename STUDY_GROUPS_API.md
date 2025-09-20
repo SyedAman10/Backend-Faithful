@@ -32,8 +32,20 @@ Content-Type: application/json
   "description": "Deep dive into modern JavaScript concepts",
   "maxParticipants": 15,
   "scheduledTime": "2024-01-25T14:00:00.000Z",
-  "durationMinutes": 90
+  "durationMinutes": 90,
+  "attendeeEmails": ["user1@example.com", "user2@example.com"],
+  "isRecurring": false,
+  "recurrencePattern": "weekly",
+  "recurrenceInterval": 1,
+  "recurrenceDaysOfWeek": [1, 3, 5],
+  "recurrenceEndDate": "2024-06-30T23:59:59.000Z",
+  "requiresApproval": true
 }
+```
+
+**Optional Headers:**
+```
+x-timezone: Asia/Karachi
 ```
 
 **Response:**
@@ -50,8 +62,14 @@ Content-Type: application/json
     "meetId": "meet-id-here",
     "maxParticipants": 15,
     "scheduledTime": "2024-01-25T14:00:00.000Z",
+    "scheduledTimeLocal": "1/25/2024, 7:00:00 PM",
+    "nextOccurrence": "2024-01-25T14:00:00.000Z",
+    "nextOccurrenceLocal": "1/25/2024, 7:00:00 PM",
     "durationMinutes": 90,
-    "createdAt": "2024-01-20T10:30:00.000Z"
+    "isRecurring": false,
+    "timezone": "Asia/Karachi",
+    "createdAt": "2024-01-20T10:30:00.000Z",
+    "attendeeCount": 2
   }
 }
 ```
@@ -83,13 +101,19 @@ console.log('Theme:', data.theme);
 
 ## 📚 **2. Get My Study Groups API**
 
-**Endpoint:** `GET /api/study-groups/my-groups`
+**Endpoint:** `GET /api/study-groups`
 
 **Description:** Retrieve all study groups where the user is a member.
 
 **Headers:**
 ```
 Authorization: Bearer {JWT_TOKEN}
+x-timezone: Asia/Karachi (optional)
+```
+
+**Query Parameters:**
+```
+?limit=50&offset=0&search=javascript&theme=programming&status=active&role=all
 ```
 
 **Response:**
@@ -104,16 +128,115 @@ Authorization: Bearer {JWT_TOKEN}
         "description": "Deep dive into modern JavaScript concepts",
         "theme": "Programming & Technology",
         "meet_link": "https://meet.google.com/abc-defg-hij",
+        "meet_id": "abc-defg-hij",
         "max_participants": 15,
         "scheduled_time": "2024-01-25T14:00:00.000Z",
+        "scheduled_time_local": "1/25/2024, 7:00:00 PM",
+        "next_occurrence": "2024-01-25T14:00:00.000Z",
+        "next_occurrence_local": "1/25/2024, 7:00:00 PM",
         "duration_minutes": 90,
+        "is_recurring": false,
+        "recurrence_pattern": null,
+        "recurrence_interval": null,
+        "recurrence_days_of_week": null,
+        "recurrence_end_date": null,
+        "recurrence_end_date_local": null,
+        "timezone": "Asia/Karachi",
         "created_at": "2024-01-20T10:30:00.000Z",
+        "created_at_local": "1/20/2024, 3:30:00 PM",
         "is_active": true,
-        "role": "admin",
+        "user_role": "admin",
+        "joined_at": "2024-01-20T10:30:00.000Z",
+        "creator_name": "John Doe",
+        "creator_email": "john@example.com",
         "current_members": 3
       }
     ],
-    "totalGroups": 1
+    "totalGroups": 1,
+    "pagination": {
+      "limit": 50,
+      "offset": 0
+    },
+    "filters": {
+      "status": "active",
+      "role": "all",
+      "search": null
+    },
+    "timezone": "Asia/Karachi"
+  }
+}
+```
+
+---
+
+## 🌐 **3. Get Public Study Groups API**
+
+**Endpoint:** `GET /api/study-groups/public`
+
+**Description:** Browse all available public study groups.
+
+**Headers:**
+```
+Authorization: Bearer {JWT_TOKEN}
+x-timezone: Asia/Karachi (optional)
+```
+
+**Query Parameters:**
+```
+?limit=20&offset=0&search=javascript&theme=programming&requiresApproval=true&date=2024-01-25
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "groups": [
+      {
+        "id": 1,
+        "title": "Advanced JavaScript Study Group",
+        "description": "Deep dive into modern JavaScript concepts",
+        "theme": "Programming & Technology",
+        "meet_link": "https://meet.google.com/abc-defg-hij",
+        "meet_id": "abc-defg-hij",
+        "max_participants": 15,
+        "scheduled_time": "2024-01-25T14:00:00.000Z",
+        "scheduled_time_local": "1/25/2024, 7:00:00 PM",
+        "next_occurrence": "2024-01-25T14:00:00.000Z",
+        "next_occurrence_local": "1/25/2024, 7:00:00 PM",
+        "duration_minutes": 90,
+        "is_recurring": false,
+        "recurrence_pattern": null,
+        "recurrence_interval": null,
+        "recurrence_days_of_week": null,
+        "recurrence_end_date": null,
+        "recurrence_end_date_local": null,
+        "timezone": "Asia/Karachi",
+        "requires_approval": true,
+        "created_at": "2024-01-20T10:30:00.000Z",
+        "created_at_local": "1/20/2024, 3:30:00 PM",
+        "is_active": true,
+        "creator_name": "John Doe",
+        "creator_email": "john@example.com",
+        "current_members": 3,
+        "user_role": null,
+        "user_joined_at": null,
+        "user_join_request_status": null,
+        "user_join_requested_at": null
+      }
+    ],
+    "totalGroups": 1,
+    "pagination": {
+      "limit": 20,
+      "offset": 0
+    },
+    "filters": {
+      "search": null,
+      "theme": null,
+      "requiresApproval": null,
+      "date": null
+    },
+    "timezone": "Asia/Karachi"
   }
 }
 ```
@@ -217,7 +340,160 @@ if (result.success) {
 
 ---
 
-## ➖ **5. Leave Study Group API**
+## 📝 **5. Request to Join Study Group API**
+
+**Endpoint:** `POST /api/study-groups/{groupId}/request-join`
+
+**Description:** Send a request to join a study group that requires approval, with a custom message.
+
+**Headers:**
+```
+Authorization: Bearer {JWT_TOKEN}
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "message": "I would love to join this study group because I'm passionate about learning JavaScript and would like to contribute to the discussions."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Join request sent successfully",
+  "data": {
+    "requestId": 123,
+    "requestedAt": "2024-01-20T10:30:00.000Z"
+  }
+}
+```
+
+**Example Usage:**
+```javascript
+const response = await fetch(`https://1befd1562ae3.ngrok-free.app/api/study-groups/${groupId}/request-join`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${jwtToken}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    message: "I'm excited to join this study group! I have experience with React and would love to learn more about advanced concepts."
+  })
+});
+
+const result = await response.json();
+if (result.success) {
+  console.log('Join request sent successfully!');
+  console.log('Request ID:', result.data.requestId);
+}
+```
+
+---
+
+## 📋 **6. Get My Join Requests API**
+
+**Endpoint:** `GET /api/study-groups/my-join-requests`
+
+**Description:** Get all join requests sent by the current user.
+
+**Headers:**
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "requests": [
+      {
+        "id": 123,
+        "groupId": 1,
+        "groupTitle": "Advanced JavaScript Study Group",
+        "message": "I would love to join this study group...",
+        "status": "pending",
+        "requestedAt": "2024-01-20T10:30:00.000Z"
+      }
+    ],
+    "totalRequests": 1
+  }
+}
+```
+
+---
+
+## 📋 **7. Get Join Requests for Group API**
+
+**Endpoint:** `GET /api/study-groups/{groupId}/join-requests`
+
+**Description:** Get all pending join requests for a study group (admin/creator only).
+
+**Headers:**
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "requests": [
+      {
+        "id": 123,
+        "userId": 5,
+        "userName": "Jane Smith",
+        "userEmail": "jane@example.com",
+        "message": "I would love to join this study group...",
+        "status": "pending",
+        "requestedAt": "2024-01-20T10:30:00.000Z"
+      }
+    ],
+    "totalRequests": 1
+  }
+}
+```
+
+---
+
+## ✅ **8. Respond to Join Request API**
+
+**Endpoint:** `POST /api/study-groups/{groupId}/join-requests/{requestId}/respond`
+
+**Description:** Accept or reject a join request (admin/creator only).
+
+**Headers:**
+```
+Authorization: Bearer {JWT_TOKEN}
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "action": "accept"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Join request accepted successfully",
+  "data": {
+    "requestId": 123,
+    "action": "accepted"
+  }
+}
+```
+
+---
+
+## ➖ **9. Leave Study Group API**
 
 **Endpoint:** `POST /api/study-groups/{groupId}/leave`
 
@@ -239,7 +515,7 @@ Content-Type: application/json
 
 ---
 
-## 🗑️ **6. Delete Study Group API**
+## 🗑️ **10. Delete Study Group API**
 
 **Endpoint:** `DELETE /api/study-groups/{groupId}`
 

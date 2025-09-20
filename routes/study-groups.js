@@ -264,19 +264,50 @@ router.post('/create', authenticateToken, async (req, res) => {
           recurrenceInterval,
           recurrenceDaysOfWeek
         );
+        console.log('🔄 Calculated next occurrence for recurring meeting:', {
+          scheduledTime: scheduledTime,
+          nextOccurrence: nextOccurrence,
+          isRecurring: isRecurring
+        });
+      } else {
+        console.log('📅 Using scheduled time as next occurrence for regular meeting:', {
+          scheduledTime: scheduledTime,
+          nextOccurrence: nextOccurrence,
+          isRecurring: isRecurring
+        });
       }
 
-      // Create study group
+      // Convert UTC time to local time for storage
+      const timezoneHeader = req.headers['x-timezone'] || 'UTC';
+      const scheduledTimeLocal = new Date(scheduledTime).toLocaleString("en-US", {timeZone: timezoneHeader});
+      const nextOccurrenceLocal = new Date(nextOccurrence).toLocaleString("en-US", {timeZone: timezoneHeader});
+      const recurrenceEndDateLocal = recurrenceEndDate ? new Date(recurrenceEndDate).toLocaleString("en-US", {timeZone: timezoneHeader}) : null;
+
+      console.log('🕐 Time conversion for storage:', {
+        scheduledTime,
+        scheduledTimeLocal,
+        nextOccurrence,
+        nextOccurrenceLocal,
+        recurrenceEndDate,
+        recurrenceEndDateLocal,
+        timezone: timezoneHeader
+      });
+
+      // Create study group - store both UTC and local time
       const groupResult = await client.query(
         `INSERT INTO study_groups (
           creator_id, title, description, theme, max_participants, 
-          scheduled_time, duration_minutes, is_recurring, recurrence_pattern,
-          recurrence_interval, recurrence_days_of_week, recurrence_end_date, next_occurrence, requires_approval
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
+          scheduled_time, scheduled_time_local, duration_minutes, is_recurring, recurrence_pattern,
+          recurrence_interval, recurrence_days_of_week, recurrence_end_date, recurrence_end_date_local, 
+          next_occurrence, next_occurrence_local, requires_approval, timezone
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
         RETURNING id, title, theme, created_at, is_recurring, next_occurrence, requires_approval`,
         [
-          creatorId, title, description, theme, maxParticipants, scheduledTime, durationMinutes,
-          isRecurring, recurrencePattern, recurrenceInterval, recurrenceDaysOfWeek, recurrenceEndDate, nextOccurrence, requiresApproval
+          creatorId, title, description, theme, maxParticipants, 
+          scheduledTime, scheduledTimeLocal, durationMinutes,
+          isRecurring, recurrencePattern, recurrenceInterval, recurrenceDaysOfWeek, 
+          recurrenceEndDate, recurrenceEndDateLocal, nextOccurrence, nextOccurrenceLocal, 
+          requiresApproval, timezoneHeader
         ]
       );
 
@@ -448,6 +479,14 @@ router.post('/create', authenticateToken, async (req, res) => {
       );
       const finalGroup = finalGroupResult.rows[0];
 
+      console.log('🔍 Database values comparison (regular group):', {
+        scheduledTime: scheduledTime,
+        nextOccurrence: nextOccurrence,
+        dbScheduledTime: finalGroup.scheduled_time,
+        dbNextOccurrence: finalGroup.next_occurrence,
+        isRecurring: finalGroup.is_recurring
+      });
+
       console.log('✅ Study group created successfully:', {
         groupId: finalGroup.id,
         creatorId: creatorId,
@@ -459,6 +498,12 @@ router.post('/create', authenticateToken, async (req, res) => {
         attendeeCount: attendeeEmails.length,
         timestamp: new Date().toISOString()
       });
+
+      // Use the timezoneHeader already declared above
+      const displayScheduledTime = scheduledTime ? 
+        new Date(scheduledTime).toLocaleString("en-US", {timeZone: timezoneHeader}) : null;
+      const displayNextOccurrence = finalGroup.next_occurrence ? 
+        new Date(finalGroup.next_occurrence).toLocaleString("en-US", {timeZone: timezoneHeader}) : null;
 
       res.json({
         success: true,
@@ -472,6 +517,7 @@ router.post('/create', authenticateToken, async (req, res) => {
           meetId: finalGroup.meet_id,
           maxParticipants: maxParticipants,
           scheduledTime: scheduledTime,
+          scheduledTimeLocal: displayScheduledTime,
           durationMinutes: durationMinutes,
           isRecurring: finalGroup.is_recurring,
           recurrencePattern: finalGroup.recurrence_pattern,
@@ -479,9 +525,11 @@ router.post('/create', authenticateToken, async (req, res) => {
           recurrenceDaysOfWeek: finalGroup.recurrence_days_of_week,
           recurrenceEndDate: finalGroup.recurrence_end_date,
           nextOccurrence: finalGroup.next_occurrence,
+          nextOccurrenceLocal: displayNextOccurrence,
           requiresApproval: finalGroup.requires_approval,
           attendeeEmails: attendeeEmails,
-          createdAt: finalGroup.created_at
+          createdAt: finalGroup.created_at,
+          timeZone: timezoneHeader
         }
       });
 
@@ -615,25 +663,24 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
         });
       }
       
-      // If startTime doesn't end with 'Z', it's already in local time
-      // We'll treat it as the user's intended time and convert to UTC
-      if (!startTime.endsWith('Z')) {
-        console.log('⚠️ Start time does not end with Z, treating as local time in timezone:', detectedTimeZone);
-        // The Date constructor already handles timezone conversion
-        // We just need to ensure it's properly normalized
-      }
-      
       // Normalize to ensure consistent timezone handling
       normalizedStartTime = startDate.toISOString();
+      
+      // Calculate local time for display purposes
+      const localTime = new Date(startDate.toLocaleString("en-US", {timeZone: detectedTimeZone}));
       
       console.log('📅 Date validation:', {
         originalStartTime: startTime,
         normalizedStartTime: normalizedStartTime,
         parsedDate: startDate.toString(),
+        localTimeInTimezone: localTime.toISOString(),
         dayOfWeek: startDate.getDay(),
         dayName: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][startDate.getDay()],
         detectedTimeZone: detectedTimeZone,
-        userAgent: req.headers['user-agent']
+        userAgent: req.headers['user-agent'],
+        timezoneOffset: startDate.getTimezoneOffset(),
+        utcHours: startDate.getUTCHours(),
+        localHours: localTime.getHours()
       });
     }
 
@@ -676,17 +723,37 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
         daysOfWeek
       );
 
-      // Create study group
+      // Convert UTC time to local time for storage
+      const timezoneHeader = req.headers['x-timezone'] || 'UTC';
+      const scheduledTimeLocal = new Date(normalizedStartTime).toLocaleString("en-US", {timeZone: timezoneHeader});
+      const nextOccurrenceLocal = new Date(nextOccurrence).toLocaleString("en-US", {timeZone: timezoneHeader});
+      const recurrenceEndDateLocal = endDate ? new Date(endDate).toLocaleString("en-US", {timeZone: timezoneHeader}) : null;
+
+      console.log('🕐 Time conversion for recurring group storage:', {
+        normalizedStartTime,
+        scheduledTimeLocal,
+        nextOccurrence,
+        nextOccurrenceLocal,
+        endDate,
+        recurrenceEndDateLocal,
+        timezone: timezoneHeader
+      });
+
+      // Create study group - store both UTC and local time
       const groupResult = await client.query(
         `INSERT INTO study_groups (
           creator_id, title, description, theme, max_participants, 
-          scheduled_time, duration_minutes, is_recurring, recurrence_pattern,
-          recurrence_interval, recurrence_days_of_week, recurrence_end_date, next_occurrence
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+          scheduled_time, scheduled_time_local, duration_minutes, is_recurring, recurrence_pattern,
+          recurrence_interval, recurrence_days_of_week, recurrence_end_date, recurrence_end_date_local, 
+          next_occurrence, next_occurrence_local, timezone
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
         RETURNING id, title, theme, created_at, is_recurring, next_occurrence`,
         [
-          creatorId, title, description, theme, maxParticipants, normalizedStartTime, durationMinutes,
-          true, frequency, interval, daysOfWeek, endDate, nextOccurrence
+          creatorId, title, description, theme, maxParticipants, 
+          normalizedStartTime, scheduledTimeLocal, durationMinutes,
+          true, frequency, interval, daysOfWeek, 
+          endDate, recurrenceEndDateLocal, nextOccurrence, nextOccurrenceLocal, 
+          timezoneHeader
         ]
       );
 
@@ -844,30 +911,44 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
 
       await client.query('COMMIT');
 
+      // Fetch the final group data from database to get updated meet information
+      const finalGroupResult = await client.query(
+        'SELECT * FROM study_groups WHERE id = $1',
+        [group.id]
+      );
+      const finalGroup = finalGroupResult.rows[0];
+
       console.log('✅ Recurring study group created successfully:', {
-        groupId: group.id,
+        groupId: finalGroup.id,
         creatorId: creatorId,
-        title: group.title,
+        title: finalGroup.title,
         frequency: frequency,
         interval: interval,
         daysOfWeek: daysOfWeek,
-        nextOccurrence: group.next_occurrence,
+        nextOccurrence: finalGroup.next_occurrence,
         attendeeCount: attendeeEmails.length,
+        hasMeetLink: !!finalGroup.meet_link,
         timestamp: new Date().toISOString()
       });
+
+      // Convert times to user's timezone for display
+      const displayStartTime = new Date(normalizedStartTime).toLocaleString("en-US", {timeZone: detectedTimeZone});
+      const displayNextOccurrence = finalGroup.next_occurrence ? 
+        new Date(finalGroup.next_occurrence).toLocaleString("en-US", {timeZone: detectedTimeZone}) : null;
 
       res.json({
         success: true,
         message: 'Recurring study group created successfully',
         data: {
-          id: group.id,
-          title: group.title,
+          id: finalGroup.id,
+          title: finalGroup.title,
           description: description,
-          theme: theme,
-          meetLink: group.meet_link,
-          meetId: group.meet_id,
+          theme: finalGroup.theme,
+          meetLink: finalGroup.meet_link,
+          meetId: finalGroup.meet_id,
           maxParticipants: maxParticipants,
           startTime: normalizedStartTime,
+          startTimeLocal: displayStartTime,
           originalStartTime: startTime,
           durationMinutes: durationMinutes,
           frequency: frequency,
@@ -875,9 +956,10 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
           daysOfWeek: daysOfWeek,
           endDate: endDate,
           timeZone: detectedTimeZone,
-          nextOccurrence: group.next_occurrence,
+          nextOccurrence: finalGroup.next_occurrence,
+          nextOccurrenceLocal: displayNextOccurrence,
           attendeeEmails: attendeeEmails,
-          createdAt: group.created_at
+          createdAt: finalGroup.created_at
         }
       });
 
@@ -921,9 +1003,10 @@ router.get('/public', authenticateToken, async (req, res) => {
     let baseQuery = `
       SELECT 
         sg.id, sg.title, sg.description, sg.theme, sg.meet_link, sg.meet_id,
-        sg.max_participants, sg.scheduled_time, sg.duration_minutes,
+        sg.max_participants, sg.scheduled_time, sg.scheduled_time_local, sg.duration_minutes,
         sg.is_recurring, sg.recurrence_pattern, sg.recurrence_interval,
-        sg.recurrence_days_of_week, sg.recurrence_end_date, sg.next_occurrence,
+        sg.recurrence_days_of_week, sg.recurrence_end_date, sg.recurrence_end_date_local, 
+        sg.next_occurrence, sg.next_occurrence_local, sg.timezone,
         sg.requires_approval, sg.created_at, sg.updated_at, sg.is_active,
         u.name as creator_name, u.email as creator_email,
         (SELECT COUNT(*) FROM study_group_members sgm_count WHERE sgm_count.group_id = sg.id AND sgm_count.is_active = true) as current_members,
@@ -1027,6 +1110,9 @@ router.get('/public', authenticateToken, async (req, res) => {
     const countResult = await pool.query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].total);
 
+    // Detect timezone for display purposes
+    const timezoneHeader = req.headers['x-timezone'] || req.headers['timezone'] || 'UTC';
+
     // Process results to add user status and member details
     const processedGroups = await Promise.all(groupsResult.rows.map(async (group) => {
       // Get detailed member information for each group
@@ -1043,6 +1129,17 @@ router.get('/public', authenticateToken, async (req, res) => {
 
       return {
         ...group,
+        // Use stored local time if available, otherwise convert from UTC
+        scheduledTimeLocal: group.scheduled_time_local || (group.scheduled_time ? 
+          new Date(group.scheduled_time).toLocaleString("en-US", {timeZone: timezoneHeader}) : null),
+        nextOccurrenceLocal: group.next_occurrence_local || (group.next_occurrence ? 
+          new Date(group.next_occurrence).toLocaleString("en-US", {timeZone: timezoneHeader}) : null),
+        recurrenceEndDateLocal: group.recurrence_end_date_local || (group.recurrence_end_date ? 
+          new Date(group.recurrence_end_date).toLocaleString("en-US", {timeZone: timezoneHeader}) : null),
+        createdAtLocal: group.created_at ? 
+          new Date(group.created_at).toLocaleString("en-US", {timeZone: timezoneHeader}) : null,
+        // Include timezone info
+        timezone: group.timezone || timezoneHeader,
         members: membersResult.rows,
         userStatus: {
           isMember: !!group.user_role,
@@ -1061,6 +1158,7 @@ router.get('/public', authenticateToken, async (req, res) => {
       totalCount: totalCount,
       filters: { search, theme, requiresApproval, date },
       pagination: { limit, offset },
+      timezone: timezoneHeader,
       timestamp: new Date().toISOString()
     });
 
@@ -1079,7 +1177,8 @@ router.get('/public', authenticateToken, async (req, res) => {
           theme,
           requiresApproval,
           date
-        }
+        },
+        timezone: timezoneHeader
       }
     });
 
@@ -1115,9 +1214,10 @@ router.get('/', authenticateToken, async (req, res) => {
     let baseQuery = `
       SELECT 
         sg.id, sg.title, sg.description, sg.theme, sg.meet_link, sg.meet_id,
-        sg.max_participants, sg.scheduled_time, sg.duration_minutes,
+        sg.max_participants, sg.scheduled_time, sg.scheduled_time_local, sg.duration_minutes,
         sg.is_recurring, sg.recurrence_pattern, sg.recurrence_interval,
-        sg.recurrence_days_of_week, sg.recurrence_end_date, sg.next_occurrence,
+        sg.recurrence_days_of_week, sg.recurrence_end_date, sg.recurrence_end_date_local, 
+        sg.next_occurrence, sg.next_occurrence_local, sg.timezone,
         sg.created_at, sg.updated_at, sg.is_active,
         sgm.role as user_role, sgm.joined_at,
         u.name as creator_name, u.email as creator_email,
@@ -1210,19 +1310,39 @@ router.get('/', authenticateToken, async (req, res) => {
     const countResult = await pool.query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].total);
 
+    // Detect timezone for display purposes
+    const timezoneHeader = req.headers['x-timezone'] || req.headers['timezone'] || 'UTC';
+    
+    // Convert times to user's timezone for display
+      const processedGroups = groupsResult.rows.map(group => ({
+        ...group,
+        // Use stored local time if available, otherwise convert from UTC
+        scheduledTimeLocal: group.scheduled_time_local || (group.scheduled_time ? 
+          new Date(group.scheduled_time).toLocaleString("en-US", {timeZone: timezoneHeader}) : null),
+        nextOccurrenceLocal: group.next_occurrence_local || (group.next_occurrence ? 
+          new Date(group.next_occurrence).toLocaleString("en-US", {timeZone: timezoneHeader}) : null),
+        recurrenceEndDateLocal: group.recurrence_end_date_local || (group.recurrence_end_date ? 
+          new Date(group.recurrence_end_date).toLocaleString("en-US", {timeZone: timezoneHeader}) : null),
+        createdAtLocal: group.created_at ? 
+          new Date(group.created_at).toLocaleString("en-US", {timeZone: timezoneHeader}) : null,
+        // Include timezone info
+        timezone: group.timezone || timezoneHeader
+      }));
+
     console.log('✅ Study groups retrieved successfully:', {
       userId: userId,
       groupCount: groupsResult.rows.length,
       totalCount: totalCount,
       filters: { status, role, search },
       pagination: { limit, offset },
+      timezone: timezoneHeader,
       timestamp: new Date().toISOString()
     });
 
     res.json({
       success: true,
       data: {
-        groups: groupsResult.rows,
+        groups: processedGroups,
         pagination: {
           total: totalCount,
           limit: parseInt(limit),
@@ -1233,7 +1353,8 @@ router.get('/', authenticateToken, async (req, res) => {
           status,
           role,
           search
-        }
+        },
+        timezone: timezoneHeader
       }
     });
 
@@ -1298,6 +1419,153 @@ router.get('/my-groups', authenticateToken, async (req, res) => {
   }
 });
 
+// Get Owned Study Groups API
+router.get('/owned', authenticateToken, async (req, res) => {
+  console.log('👑 Get Owned Study Groups Request:', {
+    userId: req.user.id,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const userId = req.user.id;
+
+    // Get groups owned by the user
+    const groupsResult = await pool.query(
+      `SELECT 
+        sg.*, u.name as creator_name, u.email as creator_email,
+        COUNT(sgm.user_id) as member_count
+       FROM study_groups sg
+       INNER JOIN users u ON sg.creator_id = u.id
+       LEFT JOIN study_group_members sgm ON sg.id = sgm.group_id AND sgm.is_active = true
+       WHERE sg.creator_id = $1 AND sg.is_active = true
+       GROUP BY sg.id, u.name, u.email
+       ORDER BY sg.created_at DESC`,
+      [userId]
+    );
+
+    console.log('✅ Owned study groups retrieved successfully:', {
+      userId: userId,
+      groupCount: groupsResult.rows.length,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: {
+        groups: groupsResult.rows
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get owned study groups error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve owned study groups',
+      message: error.message
+    });
+  }
+});
+
+// Get My Join Requests API (for users to see their own requests)
+router.get('/my-join-requests', authenticateToken, async (req, res) => {
+  console.log('📋 Get My Join Requests Request:', {
+    userId: req.user.id,
+    query: req.query,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const userId = req.user.id;
+    const { status = 'all', limit = 20, offset = 0 } = req.query;
+
+    // Get user's join requests
+    let query = `
+      SELECT 
+        sjr.id, sjr.group_id, sjr.message, sjr.status, sjr.requested_at, sjr.responded_at,
+        sg.title as group_title, sg.description as group_description, sg.theme,
+        sg.max_participants, sg.scheduled_time, sg.duration_minutes,
+        u.name as group_creator_name, u.email as group_creator_email
+      FROM study_group_join_requests sjr
+      INNER JOIN study_groups sg ON sjr.group_id = sg.id
+      INNER JOIN users u ON sg.creator_id = u.id
+      WHERE sjr.user_id = $1
+    `;
+    
+    const queryParams = [userId];
+    let paramCount = 1;
+
+    if (status !== 'all') {
+      paramCount++;
+      query += ` AND sjr.status = $${paramCount}`;
+      queryParams.push(status);
+    }
+
+    query += ` ORDER BY sjr.requested_at DESC`;
+
+    // Add pagination
+    paramCount++;
+    query += ` LIMIT $${paramCount}`;
+    queryParams.push(parseInt(limit));
+
+    paramCount++;
+    query += ` OFFSET $${paramCount}`;
+    queryParams.push(parseInt(offset));
+
+    const requestsResult = await pool.query(query, queryParams);
+
+    // Get total count
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM study_group_join_requests sjr
+      WHERE sjr.user_id = $1
+    `;
+    
+    const countParams = [userId];
+    let countParamCount = 1;
+
+    if (status !== 'all') {
+      countParamCount++;
+      countQuery += ` AND sjr.status = $${countParamCount}`;
+      countParams.push(status);
+    }
+
+    const countResult = await pool.query(countQuery, countParams);
+    const totalCount = parseInt(countResult.rows[0].total);
+
+    console.log('✅ My join requests retrieved successfully:', {
+      userId: userId,
+      requestCount: requestsResult.rows.length,
+      totalCount: totalCount,
+      status: status,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: {
+        requests: requestsResult.rows,
+        pagination: {
+          total: totalCount,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasMore: (parseInt(offset) + parseInt(limit)) < totalCount
+        },
+        filters: {
+          status
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get my join requests error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve join requests',
+      message: error.message
+    });
+  }
+});
+
 // Get Study Group Details API (Public - shows group info to everyone)
 router.get('/:groupId', authenticateToken, async (req, res) => {
   console.log('🔍 Get Study Group Details Request:', {
@@ -1307,7 +1575,16 @@ router.get('/:groupId', authenticateToken, async (req, res) => {
   });
 
   try {
-    const groupId = parseInt(req.params.groupId);
+    // Validate that groupId is a valid integer
+    const groupIdParam = req.params.groupId;
+    if (!groupIdParam || isNaN(parseInt(groupIdParam))) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid group ID. Group ID must be a valid number.'
+      });
+    }
+
+    const groupId = parseInt(groupIdParam);
     const userId = req.user.id;
 
     // Get group details
@@ -2637,12 +2914,15 @@ router.post('/:groupId/join-requests/:requestId/respond', authenticateToken, asy
     const userId = req.user.id;
     const { action } = req.body; // 'accept' or 'reject'
 
-    if (!action || !['accept', 'reject'].includes(action)) {
+    if (!action || !['accept', 'approve', 'reject'].includes(action)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid action. Must be "accept" or "reject"'
+        error: 'Invalid action. Must be "accept", "approve", or "reject"'
       });
     }
+
+    // Normalize action
+    const normalizedAction = action === 'approve' ? 'accept' : action;
 
     // Check if user is the group creator or admin
     const membershipResult = await pool.query(
@@ -2696,7 +2976,7 @@ router.post('/:groupId/join-requests/:requestId/respond', authenticateToken, asy
     try {
       await client.query('BEGIN');
 
-      if (action === 'accept') {
+      if (normalizedAction === 'accept') {
         // Check if group is still not full
         const memberCountResult = await client.query(
           'SELECT COUNT(*) as count FROM study_group_members WHERE group_id = $1 AND is_active = true',
@@ -2740,7 +3020,7 @@ router.post('/:groupId/join-requests/:requestId/respond', authenticateToken, asy
         `UPDATE study_group_join_requests 
          SET status = $1, responded_at = CURRENT_TIMESTAMP, responded_by = $2 
          WHERE id = $3`,
-        [action, userId, requestId]
+        [normalizedAction, userId, requestId]
       );
 
       await client.query('COMMIT');
@@ -2748,17 +3028,17 @@ router.post('/:groupId/join-requests/:requestId/respond', authenticateToken, asy
       console.log('✅ Join request responded successfully:', {
         requestId: requestId,
         groupId: groupId,
-        action: action,
+        action: normalizedAction,
         requesterName: request.requester_name,
         timestamp: new Date().toISOString()
       });
 
       res.json({
         success: true,
-        message: `Join request ${action}ed successfully`,
+        message: `Join request ${normalizedAction}ed successfully`,
         data: {
           requestId: requestId,
-          action: action,
+          action: normalizedAction,
           requesterName: request.requester_name,
           requesterEmail: request.requester_email,
           respondedAt: new Date().toISOString()
@@ -2782,105 +3062,6 @@ router.post('/:groupId/join-requests/:requestId/respond', authenticateToken, asy
   }
 });
 
-// Get My Join Requests API (for users to see their own requests)
-router.get('/my-join-requests', authenticateToken, async (req, res) => {
-  console.log('📋 Get My Join Requests Request:', {
-    userId: req.user.id,
-    query: req.query,
-    timestamp: new Date().toISOString()
-  });
-
-  try {
-    const userId = req.user.id;
-    const { status = 'all', limit = 20, offset = 0 } = req.query;
-
-    // Get user's join requests
-    let query = `
-      SELECT 
-        sjr.id, sjr.group_id, sjr.message, sjr.status, sjr.requested_at, sjr.responded_at,
-        sg.title as group_title, sg.description as group_description, sg.theme,
-        sg.max_participants, sg.scheduled_time, sg.duration_minutes,
-        u.name as group_creator_name, u.email as group_creator_email
-      FROM study_group_join_requests sjr
-      INNER JOIN study_groups sg ON sjr.group_id = sg.id
-      INNER JOIN users u ON sg.creator_id = u.id
-      WHERE sjr.user_id = $1
-    `;
-    
-    const queryParams = [userId];
-    let paramCount = 1;
-
-    if (status !== 'all') {
-      paramCount++;
-      query += ` AND sjr.status = $${paramCount}`;
-      queryParams.push(status);
-    }
-
-    query += ` ORDER BY sjr.requested_at DESC`;
-
-    // Add pagination
-    paramCount++;
-    query += ` LIMIT $${paramCount}`;
-    queryParams.push(parseInt(limit));
-
-    paramCount++;
-    query += ` OFFSET $${paramCount}`;
-    queryParams.push(parseInt(offset));
-
-    const requestsResult = await pool.query(query, queryParams);
-
-    // Get total count
-    let countQuery = `
-      SELECT COUNT(*) as total
-      FROM study_group_join_requests sjr
-      WHERE sjr.user_id = $1
-    `;
-    
-    const countParams = [userId];
-    let countParamCount = 1;
-
-    if (status !== 'all') {
-      countParamCount++;
-      countQuery += ` AND sjr.status = $${countParamCount}`;
-      countParams.push(status);
-    }
-
-    const countResult = await pool.query(countQuery, countParams);
-    const totalCount = parseInt(countResult.rows[0].total);
-
-    console.log('✅ My join requests retrieved successfully:', {
-      userId: userId,
-      requestCount: requestsResult.rows.length,
-      totalCount: totalCount,
-      status: status,
-      timestamp: new Date().toISOString()
-    });
-
-    res.json({
-      success: true,
-      data: {
-        requests: requestsResult.rows,
-        pagination: {
-          total: totalCount,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          hasMore: (parseInt(offset) + parseInt(limit)) < totalCount
-        },
-        filters: {
-          status
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Get my join requests error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to retrieve join requests',
-      message: error.message
-    });
-  }
-});
 
 // Get Groups by Date Range API
 router.get('/by-date-range', authenticateToken, async (req, res) => {

@@ -54,61 +54,67 @@ const calculateNextOccurrence = (startTime, pattern, interval = 1, daysOfWeek = 
   const startDate = new Date(startTime);
   const now = new Date();
   
-  if (startDate <= now) {
-    // Start time is in the past, calculate next occurrence
-    let nextDate = new Date(startDate);
-    
-    switch (pattern.toLowerCase()) {
-      case 'daily':
-        while (nextDate <= now) {
-          nextDate.setDate(nextDate.getDate() + interval);
-        }
-        break;
-        
-      case 'weekly':
-        if (daysOfWeek && daysOfWeek.length > 0) {
-          // Find next occurrence on specified days
-          let found = false;
-          let currentDate = new Date(now);
-          currentDate.setHours(startDate.getHours(), startDate.getMinutes(), 0, 0);
-          
-          // Look ahead up to 8 weeks to find next occurrence
-          for (let week = 0; week < 8; week++) {
-            for (const dayOfWeek of daysOfWeek) {
-              const targetDate = new Date(currentDate);
-              const daysToAdd = (dayOfWeek - currentDate.getDay() + 7) % 7;
-              targetDate.setDate(targetDate.getDate() + daysToAdd + (week * 7));
-              
-              if (targetDate > now) {
-                nextDate = targetDate;
-                found = true;
-                break;
-              }
-            }
-            if (found) break;
-          }
-        } else {
-          // Every week on the same day
-          while (nextDate <= now) {
-            nextDate.setDate(nextDate.getDate() + (7 * interval));
-          }
-        }
-        break;
-        
-      case 'monthly':
-        while (nextDate <= now) {
-          nextDate.setMonth(nextDate.getMonth() + interval);
-        }
-        break;
-        
-      default:
-        return null;
-    }
-    
-    return nextDate;
+  // For non-recurring meetings, just return the start time
+  if (!pattern || pattern.toLowerCase() === 'none') {
+    return startDate;
   }
   
-  return startDate;
+  // If start time is in the future, return it as the next occurrence
+  if (startDate > now) {
+    return startDate;
+  }
+  
+  // Start time is in the past, calculate next occurrence
+  let nextDate = new Date(startDate);
+  
+  switch (pattern.toLowerCase()) {
+    case 'daily':
+      while (nextDate <= now) {
+        nextDate.setDate(nextDate.getDate() + interval);
+      }
+      break;
+      
+    case 'weekly':
+      if (daysOfWeek && daysOfWeek.length > 0) {
+        // Find next occurrence on specified days
+        let found = false;
+        let currentDate = new Date(now);
+        currentDate.setHours(startDate.getHours(), startDate.getMinutes(), startDate.getSeconds(), startDate.getMilliseconds());
+        
+        // Look ahead up to 8 weeks to find next occurrence
+        for (let week = 0; week < 8; week++) {
+          for (const dayOfWeek of daysOfWeek) {
+            const targetDate = new Date(currentDate);
+            const daysToAdd = (dayOfWeek - currentDate.getDay() + 7) % 7;
+            targetDate.setDate(targetDate.getDate() + daysToAdd + (week * 7));
+            
+            if (targetDate > now) {
+              nextDate = targetDate;
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+      } else {
+        // Every week on the same day
+        while (nextDate <= now) {
+          nextDate.setDate(nextDate.getDate() + (7 * interval));
+        }
+      }
+      break;
+      
+    case 'monthly':
+      while (nextDate <= now) {
+        nextDate.setMonth(nextDate.getMonth() + interval);
+      }
+      break;
+      
+    default:
+      return startDate;
+  }
+  
+  return nextDate;
 };
 
 // Generate all occurrences for a given period

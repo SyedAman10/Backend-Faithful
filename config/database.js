@@ -3,7 +3,9 @@ require('dotenv').config();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // Ensure timezone is set to UTC to prevent automatic timezone conversion
+  options: '-c timezone=UTC'
 });
 
 const initializeDatabase = async () => {
@@ -11,6 +13,86 @@ const initializeDatabase = async () => {
     // Test connection
     const client = await pool.connect();
     console.log('✅ Database connected successfully');
+    
+    // Set timezone to UTC to prevent automatic timezone conversion
+    await client.query('SET timezone = UTC');
+    console.log('✅ Database timezone set to UTC');
+    
+    // Verify timezone setting
+    const timezoneResult = await client.query('SHOW timezone');
+    console.log('🌍 Database timezone verification:', timezoneResult.rows[0]);
+
+    // Migrate timestamp columns to TEXT to avoid timezone conversion issues
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ALTER COLUMN scheduled_time TYPE TEXT
+      `);
+      console.log('✅ Migrated scheduled_time to TEXT');
+    } catch (error) {
+      console.log('ℹ️ scheduled_time column migration:', error.message);
+    }
+
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ALTER COLUMN next_occurrence TYPE TEXT
+      `);
+      console.log('✅ Migrated next_occurrence to TEXT');
+    } catch (error) {
+      console.log('ℹ️ next_occurrence column migration:', error.message);
+    }
+
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ALTER COLUMN recurrence_end_date TYPE TEXT
+      `);
+      console.log('✅ Migrated recurrence_end_date to TEXT');
+    } catch (error) {
+      console.log('ℹ️ recurrence_end_date column migration:', error.message);
+    }
+
+    // Add local time columns for easy access
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ADD COLUMN IF NOT EXISTS scheduled_time_local TEXT
+      `);
+      console.log('✅ Added scheduled_time_local column');
+    } catch (error) {
+      console.log('ℹ️ scheduled_time_local column:', error.message);
+    }
+
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ADD COLUMN IF NOT EXISTS next_occurrence_local TEXT
+      `);
+      console.log('✅ Added next_occurrence_local column');
+    } catch (error) {
+      console.log('ℹ️ next_occurrence_local column:', error.message);
+    }
+
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ADD COLUMN IF NOT EXISTS recurrence_end_date_local TEXT
+      `);
+      console.log('✅ Added recurrence_end_date_local column');
+    } catch (error) {
+      console.log('ℹ️ recurrence_end_date_local column:', error.message);
+    }
+
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ADD COLUMN IF NOT EXISTS timezone TEXT
+      `);
+      console.log('✅ Added timezone column');
+    } catch (error) {
+      console.log('ℹ️ timezone column:', error.message);
+    }
 
     // Create users table if not exists
     await client.query(`
@@ -23,10 +105,48 @@ const initializeDatabase = async () => {
         google_access_token TEXT,
         google_refresh_token TEXT,
         google_meet_access BOOLEAN DEFAULT FALSE,
+        denomination VARCHAR(100),
+        bible_version VARCHAR(50),
+        age_group VARCHAR(20),
+        referral_source VARCHAR(100),
+        bible_answers TEXT,
+        bible_specific TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add new columns to users table if they don't exist
+    await client.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS denomination VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS bible_version VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS age_group VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS referral_source VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS bible_answers TEXT,
+      ADD COLUMN IF NOT EXISTS bible_specific TEXT,
+      ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE
+    `);
+
+    // Add parent_response_id column to prayer_responses table if it doesn't exist
+    await client.query(`
+      ALTER TABLE prayer_responses 
+      ADD COLUMN IF NOT EXISTS parent_response_id INTEGER
+    `);
+
+    // Add foreign key constraint if it doesn't exist
+    try {
+      await client.query(`
+        ALTER TABLE prayer_responses 
+        ADD CONSTRAINT fk_prayer_responses_parent 
+        FOREIGN KEY (parent_response_id) REFERENCES prayer_responses(id) ON DELETE CASCADE
+      `);
+    } catch (error) {
+      // Constraint might already exist, ignore the error
+      if (error.code !== '42710') { // 42710 = duplicate_object
+        throw error;
+      }
+    }
 
     // Create user_sessions table if not exists
     await client.query(`
@@ -187,9 +307,164 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Create user_prayer_history table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_prayer_history (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        version VARCHAR(50) NOT NULL,
+        book VARCHAR(100) NOT NULL,
+        chapter INTEGER NOT NULL,
+        verse INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        reference VARCHAR(200) NOT NULL,
+        category VARCHAR(100),
+        prayed_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, version, book, chapter, verse) -- One prayer per verse per user
+      )
+    `);
+
+    // Create user_reflection_history table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_reflection_history (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        version VARCHAR(50) NOT NULL,
+        book VARCHAR(100) NOT NULL,
+        chapter INTEGER NOT NULL,
+        verse INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        reference VARCHAR(200) NOT NULL,
+        theme VARCHAR(100) NOT NULL,
+        reflection_prompt TEXT NOT NULL,
+        reflection_questions TEXT[] NOT NULL,
+        reflected_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, version, book, chapter, verse, theme) -- One reflection per verse per theme per user
+      )
+    `);
+
+    // Create user_weekly_study_plans table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_weekly_study_plans (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        plan_id VARCHAR(50) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        description TEXT NOT NULL,
+        content TEXT NOT NULL,
+        week_start_date DATE NOT NULL,
+        week_end_date DATE NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, week_start_date) -- One plan per user per week
+      )
+    `);
+
+    // Create user_prayer_notes table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_prayer_notes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        content TEXT NOT NULL,
+        category VARCHAR(100),
+        tags TEXT[],
+        is_private BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create user_daily_activities table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_daily_activities (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        activity_date DATE NOT NULL,
+        verses_read INTEGER DEFAULT 0,
+        prayers_said INTEGER DEFAULT 0,
+        reflections_completed INTEGER DEFAULT 0,
+        study_hours DECIMAL(4,2) DEFAULT 0.00,
+        notes_created INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, activity_date) -- One record per user per day
+      )
+    `);
+
+    // Create prayer_requests table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS prayer_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        category VARCHAR(50) DEFAULT 'General',
+        is_anonymous BOOLEAN DEFAULT FALSE,
+        is_urgent BOOLEAN DEFAULT FALSE,
+        is_public BOOLEAN DEFAULT TRUE,
+        prayer_count INTEGER DEFAULT 0,
+        response_count INTEGER DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'Active',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create prayer_responses table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS prayer_responses (
+        id SERIAL PRIMARY KEY,
+        prayer_request_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        parent_response_id INTEGER,
+        response_type VARCHAR(20) DEFAULT 'prayer',
+        message TEXT,
+        is_anonymous BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (prayer_request_id) REFERENCES prayer_requests(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_response_id) REFERENCES prayer_responses(id) ON DELETE CASCADE
+      )
+    `);
+
     // Create indexes for better performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)
+    `);
+
+    // Prayer requests indexes
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_requests_user_id ON prayer_requests(user_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_requests_status ON prayer_requests(status)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_requests_category ON prayer_requests(category)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_requests_public ON prayer_requests(is_public)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_requests_created_at ON prayer_requests(created_at DESC)
+    `);
+
+    // Prayer responses indexes
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_responses_prayer_id ON prayer_responses(prayer_request_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_responses_user_id ON prayer_responses(user_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_prayer_responses_type ON prayer_responses(response_type)
     `);
     
     await client.query(`
@@ -222,6 +497,58 @@ const initializeDatabase = async () => {
     
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_study_group_join_requests_status ON study_group_join_requests(status)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_prayer_history_user_id ON user_prayer_history(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_prayer_history_prayed_at ON user_prayer_history(prayed_at)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_reflection_history_user_id ON user_reflection_history(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_reflection_history_reflected_at ON user_reflection_history(reflected_at)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_reflection_history_theme ON user_reflection_history(theme)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_weekly_study_plans_user_id ON user_weekly_study_plans(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_weekly_study_plans_week_start ON user_weekly_study_plans(week_start_date)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_prayer_notes_user_id ON user_prayer_notes(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_prayer_notes_created_at ON user_prayer_notes(created_at)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_prayer_notes_category ON user_prayer_notes(category)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_daily_activities_user_id ON user_daily_activities(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_daily_activities_date ON user_daily_activities(activity_date)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_daily_activities_user_date ON user_daily_activities(user_id, activity_date)
     `);
 
     // Create indexes for recurring meetings (only after columns exist)
