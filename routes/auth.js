@@ -2,6 +2,7 @@ const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
 const { google } = require('googleapis');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -659,6 +660,245 @@ router.post('/logout', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
+// Email signup endpoint
+router.post('/signup', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields',
+        message: 'Name, email, and password are required'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format',
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Validate password strength (minimum 6 characters)
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Weak password',
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Validate name (not empty, reasonable length)
+    if (name.trim().length < 2 || name.trim().length > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid name',
+        message: 'Name must be between 2 and 100 characters'
+      });
+    }
+
+    console.log('🔍 Email signup attempt:', {
+      email: email,
+      name: name,
+      passwordLength: password.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // Check if user already exists
+    const existingUser = await pool.query('SELECT id, email FROM users WHERE email = $1', [email.toLowerCase()]);
+    
+    if (existingUser.rows.length > 0) {
+      console.log('❌ User already exists:', email);
+      return res.status(409).json({
+        success: false,
+        error: 'User already exists',
+        message: 'An account with this email already exists'
+      });
+    }
+
+    console.log('🔐 Hashing password...');
+    const saltRounds = 12;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    
+    console.log('✅ Password hashed successfully');
+
+    // Create new user
+    console.log('💾 Creating new user in database...');
+    const insertResult = await pool.query(
+      `INSERT INTO users (email, name, password_hash, created_at, updated_at) 
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+       RETURNING id, email, name, created_at`,
+      [email.toLowerCase(), name.trim(), passwordHash]
+    );
+
+    const user = insertResult.rows[0];
+    console.log('✅ New user created:', {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      timestamp: new Date().toISOString()
+    });
+
+    // Generate JWT token
+    console.log('🔐 Generating JWT token...');
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    console.log('✅ JWT token generated successfully');
+
+    const response = {
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        picture: null, // No picture for email signup
+        googleMeetAccess: false // No Google Meet access for email signup
+      },
+      message: 'Account created successfully'
+    };
+
+    console.log('🎯 Email signup completed successfully:', {
+      userId: response.user.id,
+      email: response.user.email,
+      hasToken: !!response.token,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(201).json(response);
+
+  } catch (error) {
+    console.error('❌ Email signup error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Signup failed',
+      message: 'An error occurred while creating your account. Please try again.'
+    });
+  }
+});
+
+// Email login endpoint
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing credentials',
+        message: 'Email and password are required'
+      });
+    }
+
+    console.log('🔍 Email login attempt:', {
+      email: email,
+      timestamp: new Date().toISOString()
+    });
+
+    // Find user by email
+    const result = await pool.query(
+      'SELECT id, email, name, password_hash, picture, google_meet_access FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      console.log('❌ User not found:', email);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials',
+        message: 'Invalid email or password'
+      });
+    }
+
+    const user = result.rows[0];
+
+    // Check if user has a password (email signup user)
+    if (!user.password_hash) {
+      console.log('❌ User has no password (Google auth user):', email);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials',
+        message: 'This account was created with Google. Please use Google sign-in.'
+      });
+    }
+
+    // Verify password
+    console.log('🔐 Verifying password...');
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+
+    if (!isValidPassword) {
+      console.log('❌ Invalid password for user:', email);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials',
+        message: 'Invalid email or password'
+      });
+    }
+
+    console.log('✅ Password verified successfully');
+
+    // Generate JWT token
+    console.log('🔐 Generating JWT token...');
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    console.log('✅ JWT token generated successfully');
+
+    const response = {
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        googleMeetAccess: user.google_meet_access
+      },
+      message: 'Login successful'
+    };
+
+    console.log('🎯 Email login completed successfully:', {
+      userId: response.user.id,
+      email: response.user.email,
+      hasToken: !!response.token,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('❌ Email login error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Login failed',
+      message: 'An error occurred while logging in. Please try again.'
+    });
   }
 });
 

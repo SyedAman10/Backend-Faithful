@@ -116,6 +116,17 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Make google_id nullable for email signup users
+    try {
+      await client.query(`
+        ALTER TABLE users 
+        ALTER COLUMN google_id DROP NOT NULL
+      `);
+      console.log('✅ Made google_id column nullable');
+    } catch (error) {
+      console.log('ℹ️ google_id column constraint update:', error.message);
+    }
+
     // Add new columns to users table if they don't exist
     await client.query(`
       ALTER TABLE users 
@@ -125,7 +136,8 @@ const initializeDatabase = async () => {
       ADD COLUMN IF NOT EXISTS referral_source VARCHAR(100),
       ADD COLUMN IF NOT EXISTS bible_answers TEXT,
       ADD COLUMN IF NOT EXISTS bible_specific TEXT,
-      ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE
+      ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)
     `);
 
     // Add parent_response_id column to prayer_responses table if it doesn't exist
