@@ -1031,73 +1031,26 @@ router.put('/user-bible-version', authenticateToken, async (req, res) => {
       });
     }
 
-    console.log('🔑 Verifying Bible version with Bible Gateway...');
-
-    // Verify the Bible version exists in Bible Gateway
-    try {
-      console.log('🔑 Getting access token...');
-      const accessToken = await getBibleGatewayToken();
-      
-      console.log('🌐 Fetching available Bibles from Bible Gateway...');
-      const versionsResponse = await axios.get(`${BIBLE_GATEWAY_API_BASE}/bible`, {
-        params: { access_token: accessToken }
-      });
-      
-      console.log('📥 Bible Gateway response received:', {
-        status: versionsResponse.status,
-        hasBibles: !!versionsResponse.data.bibles,
-        biblesCount: versionsResponse.data.bibles?.length || 0,
-        timestamp: new Date().toISOString()
-      });
-
-      const availableBibles = versionsResponse.data.bibles || [];
-      const bibleExists = availableBibles.some(b => b.toLowerCase() === bibleVersion.toLowerCase());
-      
-      console.log('🔍 Checking if Bible version exists:', {
-        requestedVersion: bibleVersion,
-        exists: bibleExists,
-        availableCount: availableBibles.length,
-        firstFive: availableBibles.slice(0, 5),
-        timestamp: new Date().toISOString()
-      });
-
-      if (!bibleExists) {
-        console.log('❌ Bible version not found in available list:', {
-          version: bibleVersion,
-          availableCount: availableBibles.length,
-          availableSample: availableBibles.slice(0, 10),
-          timestamp: new Date().toISOString()
-        });
-        
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid Bible version',
-          message: `Bible version '${bibleVersion}' is not available. Available versions: ${availableBibles.join(', ')}`,
-          availableBibles: availableBibles
-        });
-      }
-      
-      console.log('✅ Bible version verified successfully:', {
+    // Basic validation - just check if it's a non-empty string
+    if (typeof bibleVersion !== 'string' || bibleVersion.trim().length === 0) {
+      console.log('❌ Invalid Bible version format:', {
         version: bibleVersion,
+        type: typeof bibleVersion,
         timestamp: new Date().toISOString()
       });
-    } catch (error) {
-      console.error('❌ Bible version verification failed:', {
-        version: bibleVersion,
-        error: error.message,
-        stack: error.stack,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        timestamp: new Date().toISOString()
-      });
-
+      
       return res.status(400).json({
         success: false,
-        error: 'Invalid Bible version',
-        message: `Failed to verify Bible version '${bibleVersion}': ${error.message}`
+        error: 'Invalid Bible version format',
+        message: 'Bible version must be a non-empty string'
       });
     }
+
+    console.log('✅ Bible version validated (basic check only):', {
+      version: bibleVersion,
+      length: bibleVersion.length,
+      timestamp: new Date().toISOString()
+    });
 
     console.log('💾 Updating user Bible version in database...', {
       userId: userId,
