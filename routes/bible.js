@@ -981,18 +981,36 @@ Important: Provide an actual, real Bible verse from the specified version. Do no
       timestamp: new Date().toISOString()
     });
 
+    // Parse reference to extract book, chapter, verse
+    const parsedRef = randomPassage.match(/^([A-Za-z0-9]+)\s+(\d+):?(\d+)?/);
+    const book = parsedRef ? parsedRef[1] : randomPassage.split(' ')[0];
+    const chapter = parsedRef ? parseInt(parsedRef[2]) : 0;
+    const verse = parsedRef ? (parsedRef[3] ? parseInt(parsedRef[3]) : 0) : 0;
+
+    console.log('📝 Parsed reference:', {
+      originalReference: randomPassage,
+      parsedBook: book,
+      parsedChapter: chapter,
+      parsedVerse: verse,
+      timestamp: new Date().toISOString()
+    });
+
     // Save to user's prayer history
     await pool.query(
       `INSERT INTO user_prayer_history 
        (user_id, version, book, chapter, verse, text, reference, category, prayed_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-       ON CONFLICT (user_id, version, reference) DO UPDATE SET prayed_at = NOW()`,
+       ON CONFLICT (user_id, version, book, chapter, verse) DO UPDATE SET 
+         text = EXCLUDED.text,
+         reference = EXCLUDED.reference,
+         category = EXCLUDED.category,
+         prayed_at = NOW()`,
       [
         userId,
         actualBibleVersion,
-        randomPassage.split(' ')[0], // Book (e.g., "John" from "John 3:16")
-        0, // Chapter (set to 0 for full passage references)
-        0, // Verse (set to 0 for full passage references)
+        book,
+        chapter,
+        verse,
         passageText.substring(0, 500), // Limit text length
         randomPassage,
         category
@@ -1692,8 +1710,47 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
     }
 
     // Fetch the verse text from Bible API
-    const url = `${BIBLE_API_BASE}/${version}/books/${selectedVerse.book}/chapters/${selectedVerse.chapter}/verses/${selectedVerse.verse}.json`;
+    const url = `${BIBLE_API_BASE}/${version}/${selectedVerse.book}/${selectedVerse.chapter}.json`;
+    console.log('🌐 Fetching verse from Bible API:', {
+      url: url,
+      book: selectedVerse.book,
+      chapter: selectedVerse.chapter,
+      verse: selectedVerse.verse,
+      timestamp: new Date().toISOString()
+    });
+
     const response = await axios.get(url);
+    
+    console.log('📥 Bible API response received:', {
+      status: response.status,
+      hasData: !!response.data,
+      hasChapter: !!response.data?.chapter,
+      hasContent: !!response.data?.chapter?.content,
+      timestamp: new Date().toISOString()
+    });
+
+    // Extract verse text from chapter content
+    let verseText = '';
+    if (response.data?.chapter?.content) {
+      const verseData = response.data.chapter.content.find(v => v[0] === selectedVerse.verse);
+      verseText = verseData ? verseData[1] : '';
+    }
+
+    console.log('📝 Verse text extracted:', {
+      verse: selectedVerse.verse,
+      textLength: verseText.length,
+      textPreview: verseText.substring(0, 100),
+      timestamp: new Date().toISOString()
+    });
+
+    if (!verseText) {
+      console.error('❌ No verse text found in API response');
+      return res.status(404).json({
+        success: false,
+        error: 'Verse not found',
+        message: 'Could not retrieve verse text from Bible API'
+      });
+    }
 
     // Save to user's reflection history
     await pool.query(
@@ -1707,7 +1764,7 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
         selectedVerse.book,
         selectedVerse.chapter,
         selectedVerse.verse,
-        response.data.text,
+        verseText,
         `${selectedVerse.book} ${selectedVerse.chapter}:${selectedVerse.verse}`,
         theme,
         themeData.prompt,
@@ -1733,7 +1790,7 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
         book: selectedVerse.book,
         chapter: selectedVerse.chapter,
         verse: selectedVerse.verse,
-        text: response.data.text,
+        text: verseText,
         reference: `${selectedVerse.book} ${selectedVerse.chapter}:${selectedVerse.verse}`,
         reflectionPrompt: themeData.prompt,
         reflectionQuestions: themeData.questions,
