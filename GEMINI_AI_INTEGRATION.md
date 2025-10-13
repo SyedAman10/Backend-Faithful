@@ -339,7 +339,7 @@ Expected: AI will use NIV and provide message about fallback.
 
 ## **Gemini AI Model Used**
 
-- **Model Name:** `gemini-1.5-pro`
+- **Model Name:** `gemini-2.5-pro`
 - **API Version:** v1beta
 - **Capabilities:** Text generation, JSON output, contextual understanding
 
