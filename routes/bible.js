@@ -12,6 +12,9 @@ const BIBLE_GATEWAY_API_BASE = 'https://api.biblegateway.com/2';
 const BIBLE_GATEWAY_USERNAME = process.env.BIBLE_GATEWAY_USERNAME;
 const BIBLE_GATEWAY_PASSWORD = process.env.BIBLE_GATEWAY_PASSWORD;
 
+// Legacy Bible API (for popular verses and reflections endpoints)
+const BIBLE_API_BASE = 'https://bible.helloao.org/api';
+
 // Initialize Gemini AI
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
@@ -914,7 +917,7 @@ Important: Provide an actual, real Bible verse from the specified version. Do no
     console.log('🌐 Calling Gemini AI API...');
 
     // Call Gemini AI
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const aiText = response.text();
