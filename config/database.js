@@ -207,6 +207,20 @@ const initializeDatabase = async () => {
     `);
 
     // Add recurring meeting columns to study_groups table if they don't exist
+    // Add LiveKit columns to study_groups table
+    try {
+      await client.query(`
+        ALTER TABLE study_groups 
+        ADD COLUMN IF NOT EXISTS livekit_room_name VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS livekit_room_sid VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS use_livekit BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS video_provider VARCHAR(50) DEFAULT 'google_meet'
+      `);
+      console.log('✅ Added LiveKit columns to study_groups table');
+    } catch (error) {
+      console.log('ℹ️ LiveKit columns:', error.message);
+    }
+
     try {
       await client.query(`
         ALTER TABLE study_groups 

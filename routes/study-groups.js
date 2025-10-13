@@ -161,7 +161,9 @@ router.post('/create', authenticateToken, async (req, res) => {
       recurrenceInterval = 1, // every 1 day/week/month
       recurrenceDaysOfWeek = [], // [1,3,5] for Monday, Wednesday, Friday
       recurrenceEndDate = null, // Optional end date for recurring meetings
-      requiresApproval = true // Whether the group requires approval to join
+      requiresApproval = true, // Whether the group requires approval to join
+      useLiveKit = false, // Whether to use LiveKit instead of Google Meet
+      videoProvider = 'google_meet' // 'google_meet' or 'livekit'
     } = req.body;
     
     const creatorId = req.user.id;
@@ -293,21 +295,30 @@ router.post('/create', authenticateToken, async (req, res) => {
         timezone: timezoneHeader
       });
 
+      // Generate LiveKit room name if using LiveKit
+      let livekitRoomName = null;
+      if (useLiveKit || videoProvider === 'livekit') {
+        livekitRoomName = `study_group_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        console.log('🎥 Generated LiveKit room name:', { livekitRoomName });
+      }
+
       // Create study group - store both UTC and local time
       const groupResult = await client.query(
         `INSERT INTO study_groups (
           creator_id, title, description, theme, max_participants, 
           scheduled_time, scheduled_time_local, duration_minutes, is_recurring, recurrence_pattern,
           recurrence_interval, recurrence_days_of_week, recurrence_end_date, recurrence_end_date_local, 
-          next_occurrence, next_occurrence_local, requires_approval, timezone
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
-        RETURNING id, title, theme, created_at, is_recurring, next_occurrence, requires_approval`,
+          next_occurrence, next_occurrence_local, requires_approval, timezone,
+          use_livekit, video_provider, livekit_room_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) 
+        RETURNING id, title, theme, created_at, is_recurring, next_occurrence, requires_approval, use_livekit, video_provider, livekit_room_name`,
         [
           creatorId, title, description, theme, maxParticipants, 
           scheduledTime, scheduledTimeLocal, durationMinutes,
           isRecurring, recurrencePattern, recurrenceInterval, recurrenceDaysOfWeek, 
           recurrenceEndDate, recurrenceEndDateLocal, nextOccurrence, nextOccurrenceLocal, 
-          requiresApproval, timezoneHeader
+          requiresApproval, timezoneHeader,
+          useLiveKit || videoProvider === 'livekit', videoProvider, livekitRoomName
         ]
       );
 
@@ -529,7 +540,10 @@ router.post('/create', authenticateToken, async (req, res) => {
           requiresApproval: finalGroup.requires_approval,
           attendeeEmails: attendeeEmails,
           createdAt: finalGroup.created_at,
-          timeZone: timezoneHeader
+          timeZone: timezoneHeader,
+          useLiveKit: finalGroup.use_livekit,
+          videoProvider: finalGroup.video_provider,
+          livekitRoomName: finalGroup.livekit_room_name
         }
       });
 
@@ -566,6 +580,8 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
       startTime, // First meeting time
       durationMinutes = 60,
       attendeeEmails = [],
+      useLiveKit = false, // Whether to use LiveKit instead of Google Meet
+      videoProvider = 'google_meet', // 'google_meet' or 'livekit'
       frequency = 'weekly', // 'daily', 'weekly', 'monthly'
       interval = 1, // every 1 day/week/month
       daysOfWeek = [], // [1,3,5] for Monday, Wednesday, Friday (0=Sunday, 1=Monday, etc.)
@@ -739,21 +755,30 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
         timezone: timezoneHeader
       });
 
+      // Generate LiveKit room name if using LiveKit
+      let livekitRoomName = null;
+      if (useLiveKit || videoProvider === 'livekit') {
+        livekitRoomName = `study_group_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        console.log('🎥 Generated LiveKit room name (recurring):', { livekitRoomName });
+      }
+
       // Create study group - store both UTC and local time
       const groupResult = await client.query(
         `INSERT INTO study_groups (
           creator_id, title, description, theme, max_participants, 
           scheduled_time, scheduled_time_local, duration_minutes, is_recurring, recurrence_pattern,
           recurrence_interval, recurrence_days_of_week, recurrence_end_date, recurrence_end_date_local, 
-          next_occurrence, next_occurrence_local, timezone
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
-        RETURNING id, title, theme, created_at, is_recurring, next_occurrence`,
+          next_occurrence, next_occurrence_local, timezone,
+          use_livekit, video_provider, livekit_room_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) 
+        RETURNING id, title, theme, created_at, is_recurring, next_occurrence, use_livekit, video_provider, livekit_room_name`,
         [
           creatorId, title, description, theme, maxParticipants, 
           normalizedStartTime, scheduledTimeLocal, durationMinutes,
           true, frequency, interval, daysOfWeek, 
           endDate, recurrenceEndDateLocal, nextOccurrence, nextOccurrenceLocal, 
-          timezoneHeader
+          timezoneHeader,
+          useLiveKit || videoProvider === 'livekit', videoProvider, livekitRoomName
         ]
       );
 

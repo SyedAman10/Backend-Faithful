@@ -37,6 +37,13 @@ BIBLE_GATEWAY_PASSWORD=Bible007!
 
 # Gemini AI API Configuration
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# LiveKit Configuration
+LIVEKIT_API_KEY=your_livekit_api_key_here
+LIVEKIT_API_SECRET=your_livekit_api_secret_here
+LIVEKIT_SERVER_URL=wss://your-livekit-server.livekit.cloud
+# For self-hosted: wss://your-domain.com
+# For LiveKit Cloud: wss://your-project.livekit.cloud
 # IMPORTANT: Add these redirect URIs to Google Cloud Console OAuth 2.0 client:
 # Development: https://1befd1562ae3.ngrok-free.app/api/auth/google/mobile-callback
 # Production: https://your-production-domain.com/api/auth/google/mobile-callback

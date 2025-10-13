@@ -235,6 +235,7 @@ const usageRoutes = require('./routes/usage');
 const studyGroupRoutes = require('./routes/study-groups');
 const bibleRoutes = require('./routes/bible');
 const prayerRoutes = require('./routes/prayer');
+const livekitRoutes = require('./routes/livekit');
 const { initializeDatabase } = require('./config/database');
 
 const app = express();
@@ -284,6 +285,7 @@ app.use('/api/usage', usageRoutes);
 app.use('/api/study-groups', studyGroupRoutes);
 app.use('/api/bible', bibleRoutes);
 app.use('/api/prayer', prayerRoutes);
+app.use('/api/livekit', livekitRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -298,7 +300,8 @@ app.get('/api/health', (req, res) => {
       'Usage Tracking: /api/usage',
       'Study Groups: /api/study-groups',
       'Bible API: /api/bible',
-      'Prayer Requests: /api/prayer'
+      'Prayer Requests: /api/prayer',
+      'LiveKit Video: /api/livekit'
     ]
   });
 });
