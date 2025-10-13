@@ -32,9 +32,8 @@ LOG_LEVEL=debug
 ENABLE_DETAILED_LOGGING=true
 
 # Bible Gateway API Configuration
-BIBLE_GATEWAY_USERNAME=your_bible_gateway_username_here
-BIBLE_GATEWAY_PASSWORD=your_bible_gateway_password_here
-
+BIBLE_GATEWAY_USERNAME=faithfulcompanionai@gmail.com
+BIBLE_GATEWAY_PASSWORD=Bible007!
 # IMPORTANT: Add these redirect URIs to Google Cloud Console OAuth 2.0 client:
 # Development: https://1befd1562ae3.ngrok-free.app/api/auth/google/mobile-callback
 # Production: https://your-production-domain.com/api/auth/google/mobile-callback
