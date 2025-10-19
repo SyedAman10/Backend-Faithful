@@ -262,7 +262,7 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
-// Mobile OAuth callback (handles both login AND linking based on state parameter)
+// Mobile OAuth callback
 router.get('/google/mobile-callback', async (req, res) => {
   console.log('📱 Mobile Callback Received:', {
     method: req.method,
@@ -279,38 +279,6 @@ router.get('/google/mobile-callback', async (req, res) => {
   try {
     const { code, error: googleError, state } = req.query;
     
-    // Check if this is a LINKING action (has state with action: 'link')
-    let isLinkingAction = false;
-    let linkUserId = null;
-    
-    if (state) {
-      try {
-        const stateData = jwt.verify(state, process.env.JWT_SECRET);
-        if (stateData.action === 'link' && stateData.userId) {
-          isLinkingAction = true;
-          linkUserId = stateData.userId;
-          console.log('🔗 LINKING ACTION DETECTED:', {
-            userId: linkUserId,
-            action: stateData.action
-          });
-        }
-      } catch (stateError) {
-        console.log('⚠️ State parameter present but invalid:', stateError.message);
-        // Continue as regular login if state is invalid
-      }
-    }
-    
-    // If this is a linking action, use different return URL
-    const EXPO_RETURN_URL = isLinkingAction 
-      ? (process.env.EXPO_LINK_RETURN_URL || process.env.EXPO_RETURN_URL || 'faithfulcompanion://auth/link-callback')
-      : (process.env.EXPO_RETURN_URL || 'faithfulcompanion://auth/callback');
-    
-    console.log('🔍 Callback Mode:', {
-      isLinking: isLinkingAction,
-      linkUserId: linkUserId,
-      returnUrl: EXPO_RETURN_URL
-    });
-    
     console.log('🔍 Callback Parameters:', {
       code: code ? `${code.substring(0, 10)}...` : 'missing',
       codeLength: code ? code.length : 0,
@@ -325,10 +293,15 @@ router.get('/google/mobile-callback', async (req, res) => {
         error: googleError,
         timestamp: new Date().toISOString()
       });
+      const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/auth/callback';
       return res.redirect(`${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
     }
     
     console.log('Mobile callback received:', { code });
+    
+    // Use environment variable for Expo return URL, fallback to localhost:8081
+    const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/auth/callback';
+    
     console.log('🔗 Using Expo return URL:', EXPO_RETURN_URL);
 
     if (!code) {
@@ -376,80 +349,7 @@ router.get('/google/mobile-callback', async (req, res) => {
       timestamp: new Date().toISOString()
     });
     
-    // LINKING ACTION: Update existing user instead of creating/logging in
-    if (isLinkingAction && linkUserId) {
-      console.log('🔗 Processing LINKING action for user:', linkUserId);
-      
-      const googleId = userInfo.sub || userInfo.id || userInfo.google_id;
-      const googleEmail = userInfo.email;
-      
-      // Check if user still exists
-      const userCheck = await pool.query(
-        'SELECT id, email, name FROM users WHERE id = $1',
-        [linkUserId]
-      );
-
-      if (userCheck.rows.length === 0) {
-        console.log('❌ User not found for linking:', linkUserId);
-        return res.redirect(`${EXPO_RETURN_URL}?error=UserNotFound&message=User+account+not+found`);
-      }
-
-      const currentUser = userCheck.rows[0];
-      console.log('✅ Found user to link:', {
-        userId: currentUser.id,
-        email: currentUser.email
-      });
-
-      // Check if this Google account is already linked to another user
-      const googleCheck = await pool.query(
-        'SELECT id, email FROM users WHERE google_id = $1 AND id != $2',
-        [googleId, linkUserId]
-      );
-
-      if (googleCheck.rows.length > 0) {
-        console.log('❌ Google account already linked to another user');
-        return res.redirect(`${EXPO_RETURN_URL}?error=GoogleAccountInUse&message=This+Google+account+is+already+linked+to+another+user`);
-      }
-
-      // Update user with Google OAuth tokens and info
-      const updateResult = await pool.query(
-        `UPDATE users 
-         SET google_id = $1, 
-             google_access_token = $2, 
-             google_refresh_token = $3, 
-             google_meet_access = TRUE,
-             google_email = $4,
-             picture = COALESCE(picture, $5),
-             updated_at = CURRENT_TIMESTAMP 
-         WHERE id = $6 
-         RETURNING id, email, name, picture, google_meet_access, google_email`,
-        [googleId, tokens.access_token, tokens.refresh_token, googleEmail, userInfo.picture, linkUserId]
-      );
-
-      const updatedUser = updateResult.rows[0];
-
-      console.log('✅ Google account LINKED successfully:', {
-        userId: updatedUser.id,
-        email: updatedUser.email,
-        googleEmail: updatedUser.google_email,
-        googleMeetAccess: updatedUser.google_meet_access,
-        timestamp: new Date().toISOString()
-      });
-
-      // Redirect back to app with success (no JWT token needed, user already logged in)
-      const redirectUrl = new URL(EXPO_RETURN_URL);
-      redirectUrl.searchParams.set('success', 'true');
-      redirectUrl.searchParams.set('message', 'Google account linked successfully');
-      redirectUrl.searchParams.set('googleEmail', googleEmail);
-      redirectUrl.searchParams.set('googleMeetAccess', 'true');
-      redirectUrl.searchParams.set('action', 'linked');
-
-      console.log('🔄 Redirecting to app after linking:', redirectUrl.toString());
-      return res.redirect(redirectUrl.toString());
-    }
-    
-    // REGULAR LOGIN/SIGNUP ACTION
-    console.log('💾 Processing user authentication (regular login/signup)...');
+    console.log('💾 Processing user authentication...');
     const userAuthStartTime = Date.now();
     
     const user = await handleUserAuth(userInfo, tokens);
@@ -1141,7 +1041,10 @@ router.post('/link-google', authenticateToken, async (req, res) => {
   }
 });
 
-// Get Google OAuth URL for linking (uses same callback as login, but with state)
+// Create OAuth client specifically for linking (uses different callback)
+const linkOAuthClient = createOAuthClient(`${getBackendUrl()}/api/auth/google/link-callback`);
+
+// Get Google OAuth URL for linking (separate from login)
 router.get('/google/link-url', authenticateToken, (req, res) => {
   console.log('🔗 OAuth Link URL Request:', {
     userId: req.user.id,
@@ -1149,15 +1052,14 @@ router.get('/google/link-url', authenticateToken, (req, res) => {
     timestamp: new Date().toISOString()
   });
 
-  // Use state parameter to pass user ID securely and indicate this is a linking action
+  // Use state parameter to pass user ID securely
   const state = jwt.sign(
     { userId: req.user.id, action: 'link' },
     process.env.JWT_SECRET,
     { expiresIn: '10m' } // Short expiration for security
   );
 
-  // Use the SAME callback URL as regular login, but with state parameter
-  const url = mobileOAuthClient.generateAuthUrl({
+  const url = linkOAuthClient.generateAuthUrl({
     access_type: 'offline',
     scope: [
       'https://www.googleapis.com/auth/userinfo.email',
@@ -1166,27 +1068,196 @@ router.get('/google/link-url', authenticateToken, (req, res) => {
       'https://www.googleapis.com/auth/calendar.events'
     ],
     prompt: 'consent',
-    state: state // This tells the callback it's a linking action
+    state: state
   });
 
   console.log('🔗 Generated OAuth Link URL:', {
     url: url,
     urlLength: url.length,
-    callbackUrl: `${getBackendUrl()}/api/auth/google/mobile-callback`,
-    hasState: true,
+    callbackUrl: `${getBackendUrl()}/api/auth/google/link-callback`,
     timestamp: new Date().toISOString()
   });
 
   res.json({ 
     success: true,
     url,
-    callbackUrl: `${getBackendUrl()}/api/auth/google/mobile-callback`,
+    callbackUrl: `${getBackendUrl()}/api/auth/google/link-callback`,
     message: 'Use this URL to authorize Google Calendar access for creating study groups'
   });
 });
 
-// NOTE: /google/link-callback endpoint has been removed
-// Linking now uses the same /google/mobile-callback endpoint
-// The callback differentiates between login and linking based on the state parameter
+// Google OAuth callback specifically for linking (not for login)
+router.get('/google/link-callback', async (req, res) => {
+  console.log('🔗 Link Callback Received:', {
+    method: req.method,
+    url: req.url,
+    query: req.query,
+    headers: {
+      'user-agent': req.headers['user-agent'],
+      'accept': req.headers['accept']
+    },
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { code, state, error: googleError } = req.query;
+    
+    console.log('🔍 Link Callback Parameters:', {
+      code: code ? `${code.substring(0, 10)}...` : 'missing',
+      codeLength: code ? code.length : 0,
+      hasState: !!state,
+      googleError: googleError || 'none'
+    });
+
+    const EXPO_RETURN_URL = process.env.EXPO_LINK_RETURN_URL || process.env.EXPO_RETURN_URL || 'faithfulcompanion://auth/link-callback';
+
+    // Check for Google OAuth errors
+    if (googleError) {
+      console.log('❌ Google OAuth Error:', googleError);
+      return res.redirect(`${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
+    }
+
+    if (!code) {
+      console.log('❌ No authorization code received');
+      return res.redirect(`${EXPO_RETURN_URL}?error=NoCode&message=Authorization+code+missing`);
+    }
+
+    if (!state) {
+      console.log('❌ No state parameter received');
+      return res.redirect(`${EXPO_RETURN_URL}?error=InvalidState&message=State+parameter+missing`);
+    }
+
+    // Verify and decode state parameter
+    let stateData;
+    try {
+      stateData = jwt.verify(state, process.env.JWT_SECRET);
+      console.log('✅ State verified:', {
+        userId: stateData.userId,
+        action: stateData.action
+      });
+    } catch (stateError) {
+      console.log('❌ Invalid state parameter:', stateError.message);
+      return res.redirect(`${EXPO_RETURN_URL}?error=InvalidState&message=State+verification+failed`);
+    }
+
+    if (stateData.action !== 'link') {
+      console.log('❌ Invalid action in state:', stateData.action);
+      return res.redirect(`${EXPO_RETURN_URL}?error=InvalidAction&message=Invalid+action+type`);
+    }
+
+    const userId = stateData.userId;
+
+    // Exchange code for tokens
+    console.log('🔄 Exchanging authorization code for tokens...');
+    const { tokens } = await linkOAuthClient.getToken(code);
+    linkOAuthClient.setCredentials(tokens);
+    
+    console.log('🔑 Tokens received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token
+    });
+
+    // Get Google user info
+    console.log('👤 Fetching Google user info...');
+    const oauth2 = google.oauth2({ auth: linkOAuthClient, version: 'v2' });
+    const { data: googleUserInfo } = await oauth2.userinfo.get();
+    
+    const googleId = googleUserInfo.sub || googleUserInfo.id;
+    const googleEmail = googleUserInfo.email;
+    
+    console.log('✅ Google user info retrieved:', {
+      googleId: googleId,
+      googleEmail: googleEmail,
+      name: googleUserInfo.name
+    });
+
+    // Check if user still exists
+    const userCheck = await pool.query(
+      'SELECT id, email, name FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userCheck.rows.length === 0) {
+      console.log('❌ User not found:', userId);
+      return res.redirect(`${EXPO_RETURN_URL}?error=UserNotFound&message=User+account+not+found`);
+    }
+
+    const currentUser = userCheck.rows[0];
+    console.log('✅ Current user found:', {
+      userId: currentUser.id,
+      email: currentUser.email
+    });
+
+    // Check if this Google account is already linked to another user
+    const googleCheck = await pool.query(
+      'SELECT id, email FROM users WHERE google_id = $1 AND id != $2',
+      [googleId, userId]
+    );
+
+    if (googleCheck.rows.length > 0) {
+      console.log('❌ Google account already linked to another user');
+      return res.redirect(`${EXPO_RETURN_URL}?error=GoogleAccountInUse&message=This+Google+account+is+already+linked+to+another+user`);
+    }
+
+    // Check if current user already has a different Google account linked
+    const currentGoogleCheck = await pool.query(
+      'SELECT google_id, google_email FROM users WHERE id = $1 AND google_id IS NOT NULL',
+      [userId]
+    );
+
+    if (currentGoogleCheck.rows.length > 0 && currentGoogleCheck.rows[0].google_id !== googleId) {
+      console.log('⚠️ User already has a different Google account linked:', {
+        currentGoogleId: currentGoogleCheck.rows[0].google_id,
+        newGoogleId: googleId
+      });
+      // We'll update it anyway, but log the warning
+    }
+
+    // Update user with Google OAuth tokens and info
+    const updateResult = await pool.query(
+      `UPDATE users 
+       SET google_id = $1, 
+           google_access_token = $2, 
+           google_refresh_token = $3, 
+           google_meet_access = TRUE,
+           google_email = $4,
+           picture = COALESCE(picture, $5),
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $6 
+       RETURNING id, email, name, picture, google_meet_access, google_email`,
+      [googleId, tokens.access_token, tokens.refresh_token, googleEmail, googleUserInfo.picture, userId]
+    );
+
+    const updatedUser = updateResult.rows[0];
+
+    console.log('✅ Google account linked successfully:', {
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      googleEmail: updatedUser.google_email,
+      googleMeetAccess: updatedUser.google_meet_access,
+      timestamp: new Date().toISOString()
+    });
+
+    // Redirect back to app with success
+    const redirectUrl = new URL(EXPO_RETURN_URL);
+    redirectUrl.searchParams.set('success', 'true');
+    redirectUrl.searchParams.set('message', 'Google account linked successfully');
+    redirectUrl.searchParams.set('googleEmail', googleEmail);
+    redirectUrl.searchParams.set('googleMeetAccess', 'true');
+
+    console.log('🔄 Redirecting to app:', redirectUrl.toString());
+    return res.redirect(redirectUrl.toString());
+
+  } catch (error) {
+    console.error('❌ Link callback error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    const EXPO_RETURN_URL = process.env.EXPO_LINK_RETURN_URL || process.env.EXPO_RETURN_URL || 'faithfulcompanion://auth/link-callback';
+    return res.redirect(`${EXPO_RETURN_URL}?error=LinkFailed&message=${encodeURIComponent(error.message)}`);
+  }
+});
 
 module.exports = router;
