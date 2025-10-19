@@ -137,7 +137,8 @@ const initializeDatabase = async () => {
       ADD COLUMN IF NOT EXISTS bible_answers TEXT,
       ADD COLUMN IF NOT EXISTS bible_specific TEXT,
       ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)
+      ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS google_email VARCHAR(255)
     `);
 
     // Add parent_response_id column to prayer_responses table if it doesn't exist

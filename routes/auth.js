@@ -916,4 +916,161 @@ router.get('/verify', authenticateToken, (req, res) => {
   });
 });
 
+// Link Google account to existing email user
+router.post('/link-google', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    const userId = req.user.id;
+
+    console.log('🔗 Link Google Account Request:', {
+      userId: userId,
+      email: req.user.email,
+      hasCode: !!code,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        error: 'Authorization code is required'
+      });
+    }
+
+    // Check if user already has Google linked
+    const userCheck = await pool.query(
+      'SELECT google_id, google_access_token FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const currentUser = userCheck.rows[0];
+    
+    // Exchange code for tokens
+    console.log('🔄 Exchanging authorization code for tokens...');
+    const { tokens } = await mobileOAuthClient.getToken(code);
+    mobileOAuthClient.setCredentials(tokens);
+    
+    console.log('🔑 Tokens received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token
+    });
+
+    // Get Google user info
+    console.log('👤 Fetching Google user info...');
+    const oauth2 = google.oauth2({ auth: mobileOAuthClient, version: 'v2' });
+    const { data: googleUserInfo } = await oauth2.userinfo.get();
+    
+    const googleId = googleUserInfo.sub || googleUserInfo.id;
+    const googleEmail = googleUserInfo.email;
+    
+    console.log('✅ Google user info retrieved:', {
+      googleId: googleId,
+      googleEmail: googleEmail
+    });
+
+    // Check if this Google account is already linked to another user
+    const googleCheck = await pool.query(
+      'SELECT id, email FROM users WHERE google_id = $1 AND id != $2',
+      [googleId, userId]
+    );
+
+    if (googleCheck.rows.length > 0) {
+      console.log('❌ Google account already linked to another user');
+      return res.status(409).json({
+        success: false,
+        error: 'This Google account is already linked to another user',
+        message: 'Please use a different Google account'
+      });
+    }
+
+    // Update user with Google OAuth tokens and info
+    const updateResult = await pool.query(
+      `UPDATE users 
+       SET google_id = $1, 
+           google_access_token = $2, 
+           google_refresh_token = $3, 
+           google_meet_access = TRUE,
+           google_email = $4,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $5 
+       RETURNING id, email, name, picture, google_meet_access`,
+      [googleId, tokens.access_token, tokens.refresh_token, googleEmail, userId]
+    );
+
+    const updatedUser = updateResult.rows[0];
+
+    console.log('✅ Google account linked successfully:', {
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      googleEmail: googleEmail,
+      googleMeetAccess: updatedUser.google_meet_access,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Google account linked successfully. You can now create study groups with Google Meet.',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        picture: updatedUser.picture,
+        googleMeetAccess: updatedUser.google_meet_access,
+        googleEmail: googleEmail
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Link Google account error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to link Google account',
+      message: error.message
+    });
+  }
+});
+
+// Get Google OAuth URL for linking (separate from login)
+router.get('/google/link-url', authenticateToken, (req, res) => {
+  console.log('🔗 OAuth Link URL Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    timestamp: new Date().toISOString()
+  });
+
+  const url = mobileOAuthClient.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events'
+    ],
+    prompt: 'consent'
+  });
+
+  console.log('🔗 Generated OAuth Link URL:', {
+    url: url,
+    urlLength: url.length,
+    timestamp: new Date().toISOString()
+  });
+
+  res.json({ 
+    success: true,
+    url,
+    message: 'Use this URL to authorize Google Calendar access for creating study groups'
+  });
+});
+
 module.exports = router;

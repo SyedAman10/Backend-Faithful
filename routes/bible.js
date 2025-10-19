@@ -5,94 +5,41 @@ const { authenticateToken } = require('../middleware/auth');
 const { pool } = require('../config/database');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Base URL for Bible Gateway API
-const BIBLE_GATEWAY_API_BASE = 'https://api.biblegateway.com/2';
-
-// Bible Gateway API credentials (from environment variables)
-const BIBLE_GATEWAY_USERNAME = process.env.BIBLE_GATEWAY_USERNAME;
-const BIBLE_GATEWAY_PASSWORD = process.env.BIBLE_GATEWAY_PASSWORD;
-
-// Legacy Bible API (for popular verses and reflections endpoints)
-const BIBLE_API_BASE = 'https://bible.helloao.org/api';
+// New Bible GO API - Open Source REST API
+const BIBLE_API_BASE = 'https://bible-go-api.rkeplin.com/v1';
 
 // Initialize Gemini AI
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-// Cache for access token
-let cachedAccessToken = null;
-let tokenExpiration = null;
+/**
+ * Translation abbreviation mapping
+ * Maps common abbreviations to API IDs
+ */
+const TRANSLATION_MAP = {
+  'ASV': 'ASV1901',
+  'BBE': 'BBE',
+  'DARBY': 'DARBY',
+  'KJV': 'KJV',
+  'WEB': 'WEB',
+  'YLT': 'YLT',
+  'NIV': 'NIV',
+  'NLT': 'NLT'
+};
 
 /**
- * Get Bible Gateway API access token
- * Caches the token until expiration
+ * Get translation ID from user preference
  */
-async function getBibleGatewayToken() {
-  console.log('🔐 getBibleGatewayToken() called', {
-    hasCachedToken: !!cachedAccessToken,
-    tokenExpiration: tokenExpiration ? new Date(tokenExpiration * 1000).toISOString() : 'none',
-    currentTime: new Date().toISOString(),
-    isTokenValid: cachedAccessToken && tokenExpiration && Date.now() < tokenExpiration * 1000,
-    timestamp: new Date().toISOString()
-  });
-
-  // Return cached token if still valid
-  if (cachedAccessToken && tokenExpiration && Date.now() < tokenExpiration * 1000) {
-    console.log('✅ Using cached Bible Gateway token', {
-      expiresIn: Math.floor((tokenExpiration * 1000 - Date.now()) / 1000) + ' seconds',
-      timestamp: new Date().toISOString()
-    });
-    return cachedAccessToken;
-  }
-
-  try {
-    console.log('🔑 Requesting new Bible Gateway access token...', {
-      apiUrl: `${BIBLE_GATEWAY_API_BASE}/request_access_token`,
-      hasUsername: !!BIBLE_GATEWAY_USERNAME,
-      hasPassword: !!BIBLE_GATEWAY_PASSWORD,
-      timestamp: new Date().toISOString()
-    });
-
-    const response = await axios.get(`${BIBLE_GATEWAY_API_BASE}/request_access_token`, {
-      params: {
-        username: BIBLE_GATEWAY_USERNAME,
-        password: BIBLE_GATEWAY_PASSWORD
-      }
-    });
-
-    console.log('📥 Bible Gateway API response received', {
-      status: response.status,
-      hasAccessToken: !!response.data.access_token,
-      hasExpiration: !!response.data.expiration,
-      timestamp: new Date().toISOString()
-    });
-
-    cachedAccessToken = response.data.access_token;
-    tokenExpiration = response.data.expiration;
-
-    console.log('✅ Bible Gateway token obtained successfully', {
-      tokenLength: cachedAccessToken?.length || 0,
-      expiresAt: new Date(tokenExpiration * 1000).toISOString(),
-      expiresIn: Math.floor((tokenExpiration * 1000 - Date.now()) / 1000) + ' seconds',
-      timestamp: new Date().toISOString()
-    });
-
-    return cachedAccessToken;
-  } catch (error) {
-    console.error('❌ Failed to get Bible Gateway token:', {
-      error: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      timestamp: new Date().toISOString()
-    });
-    throw new Error('Failed to authenticate with Bible Gateway API');
-  }
+function getTranslationId(userVersion) {
+  if (!userVersion) return 'KJV'; // Default to KJV
+  
+  const upperVersion = userVersion.toUpperCase();
+  return TRANSLATION_MAP[upperVersion] || upperVersion;
 }
 
 // Get Available Bible Versions/Translations
 router.get('/versions', authenticateToken, async (req, res) => {
-  console.log('📖 Get Bible Versions Request:', {
+  console.log('📖 Get Bible Translations Request:', {
     userId: req.user.id,
     userEmail: req.user.email,
     endpoint: '/api/bible/versions',
@@ -101,49 +48,41 @@ router.get('/versions', authenticateToken, async (req, res) => {
   });
 
   try {
-    console.log('🔑 Fetching Bible Gateway access token...');
-    const accessToken = await getBibleGatewayToken();
-    
-    console.log('🌐 Making request to Bible Gateway API...', {
-      url: `${BIBLE_GATEWAY_API_BASE}/bible`,
-      hasToken: !!accessToken,
-      tokenLength: accessToken?.length || 0,
+    console.log('🌐 Making request to Bible GO API...', {
+      url: `${BIBLE_API_BASE}/translations`,
       timestamp: new Date().toISOString()
     });
 
-    const response = await axios.get(`${BIBLE_GATEWAY_API_BASE}/bible`, {
-      params: { access_token: accessToken }
-    });
+    const response = await axios.get(`${BIBLE_API_BASE}/translations`);
     
-    console.log('📥 Bible Gateway API response received:', {
+    console.log('📥 Bible GO API response received:', {
       status: response.status,
       statusText: response.statusText,
       dataType: typeof response.data,
-      hasBibles: !!response.data.bibles,
+      isArray: Array.isArray(response.data),
       timestamp: new Date().toISOString()
     });
 
-    // Bible Gateway returns an array of Bible abbreviations
-    const bibles = response.data.bibles || [];
+    // Bible GO API returns an array of translation objects
+    const translations = response.data || [];
     
-    console.log('✅ Bible versions retrieved successfully:', {
-      versionCount: bibles.length,
-      firstFive: bibles.slice(0, 5),
-      lastFive: bibles.slice(-5),
+    console.log('✅ Bible translations retrieved successfully:', {
+      translationCount: translations.length,
+      firstThree: translations.slice(0, 3).map(t => ({ id: t.id, name: t.name, abbreviation: t.abbreviation })),
       timestamp: new Date().toISOString()
     });
 
     console.log('📤 Sending response to client:', {
       success: true,
-      totalBibles: bibles.length,
+      totalTranslations: translations.length,
       timestamp: new Date().toISOString()
     });
 
     res.json({
       success: true,
       data: {
-        bibles: bibles,
-        total: bibles.length
+        translations: translations,
+        total: translations.length
       }
     });
 
@@ -371,87 +310,82 @@ router.get('/passage/:bible/:passage(*)', authenticateToken, async (req, res) =>
   }
 });
 
-// Search Bible
-// Examples:
-// - GET /api/bible/search/niv/love?search_type=all&limit=20
-// - GET /api/bible/search/niv/faith hope love?search_type=phrase
-router.get('/search/:bible/:query', authenticateToken, async (req, res) => {
+// Search Bible using Bible GO API
+// GET /api/bible/search?query=love&translation=KJV&limit=20
+router.get('/search', authenticateToken, async (req, res) => {
   console.log('🔍 Bible Search Request:', {
     userId: req.user.id,
     userEmail: req.user.email,
-    bible: req.params.bible,
-    query: req.params.query,
-    searchType: req.query.search_type,
-    start: req.query.start,
+    query: req.query.query,
+    translation: req.query.translation,
     limit: req.query.limit,
-    endpoint: '/api/bible/search/:bible/:query',
+    endpoint: '/api/bible/search',
     method: 'GET',
     timestamp: new Date().toISOString()
   });
 
   try {
-    const { bible, query } = req.params;
-    const { search_type = 'all', start = 0, limit = 100 } = req.query;
+    const { query, translation = 'KJV', limit = 50 } = req.query;
 
     console.log('🔍 Search parameters:', {
-      bible: bible,
       query: query,
-      search_type: search_type,
-      start: start,
+      translation: translation,
       limit: limit,
       timestamp: new Date().toISOString()
     });
 
     // Validate parameters
-    if (!bible || !query) {
-      console.log('❌ Missing required parameters');
+    if (!query) {
+      console.log('❌ Missing required parameter: query');
       return res.status(400).json({
         success: false,
-        error: 'Missing required parameters: bible and query are required',
+        error: 'Missing required parameter: query',
         examples: [
-          'GET /api/bible/search/niv/love',
-          'GET /api/bible/search/niv/faith hope love?search_type=phrase'
+          'GET /api/bible/search?query=love&translation=KJV',
+          'GET /api/bible/search?query=faith&translation=NIV&limit=10'
         ]
       });
     }
 
-    console.log('🔑 Fetching Bible Gateway access token...');
-    const accessToken = await getBibleGatewayToken();
+    const translationId = getTranslationId(translation);
+    const url = `${BIBLE_API_BASE}/search?query=${encodeURIComponent(query)}`;
     
-    console.log('🌐 Making search request to Bible Gateway API...', {
-      url: `${BIBLE_GATEWAY_API_BASE}/bible/search/${query}/${bible}`,
-      bible: bible,
+    console.log('🌐 Making search request to Bible GO API...', {
+      url: url,
       query: query,
-      search_type: search_type,
-      hasToken: !!accessToken,
+      translation: translationId,
+      limit: limit,
       timestamp: new Date().toISOString()
     });
 
-    const response = await axios.get(`${BIBLE_GATEWAY_API_BASE}/bible/search/${query}/${bible}`, {
-      params: {
-        access_token: accessToken,
-        search_type: search_type,
-        start: start,
-        limit: limit
-      }
-    });
+    const response = await axios.get(url);
     
-    console.log('📥 Bible Gateway search API response received:', {
+    console.log('📥 Bible GO API search response received:', {
       status: response.status,
       statusText: response.statusText,
       dataType: typeof response.data,
-      hasResults: !!response.data.results,
-      resultsCount: response.data.results?.length || 0,
-      total: response.data.total || 0,
+      isArray: Array.isArray(response.data),
+      resultsCount: response.data?.length || 0,
       timestamp: new Date().toISOString()
     });
 
+    // Filter results by translation if needed
+    let results = response.data || [];
+    if (translationId && translationId !== 'KJV') {
+      // Note: Bible GO API search returns results from all translations
+      // You may need to filter or make translation-specific searches
+      console.log(`📋 Note: Search returns results from all translations. Requested: ${translationId}`);
+    }
+
+    // Apply limit
+    if (limit && results.length > limit) {
+      results = results.slice(0, parseInt(limit));
+    }
+
     console.log('✅ Bible search completed successfully:', {
-      bible: bible,
       query: query,
-      searchType: search_type,
-      resultsReturned: response.data.results?.length || 0,
-      totalResults: response.data.total || 0,
+      translation: translationId,
+      resultsReturned: results.length,
       timestamp: new Date().toISOString()
     });
 
@@ -460,20 +394,18 @@ router.get('/search/:bible/:query', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       data: {
-        bible: bible,
         query: query,
-        searchType: search_type,
-        results: response.data.results || [],
-        total: response.data.total || 0,
-        start: parseInt(start),
+        translation: translationId,
+        results: results,
+        total: results.length,
         limit: parseInt(limit)
       }
     });
 
   } catch (error) {
     console.error('❌ Bible search error:', {
-      bible: req.params.bible,
-      query: req.params.query,
+      query: req.query.query,
+      translation: req.query.translation,
       error: error.message,
       stack: error.stack,
       status: error.response?.status,
@@ -614,7 +546,30 @@ router.get('/books', authenticateToken, async (req, res) => {
   });
 
   try {
-    // Common Bible books list
+    console.log('🌐 Making request to Bible GO API for books...');
+    
+    const response = await axios.get(`${BIBLE_API_BASE}/books`);
+    const books = response.data || [];
+
+    console.log('✅ Bible books retrieved successfully:', {
+      bookCount: books.length,
+      firstThree: books.slice(0, 3).map(b => ({ id: b.id, name: b.name })),
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: {
+        books: books,
+        total: books.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get Bible books error:', error);
+    
+    // Fallback to hardcoded list if API fails
+    console.log('⚠️ Using fallback hardcoded books list');
     const books = [
       // Old Testament
       { name: 'Genesis', id: 'genesis', testament: 'old', order: 1 },
@@ -687,7 +642,7 @@ router.get('/books', authenticateToken, async (req, res) => {
       { name: 'Revelation', id: 'revelation', testament: 'new', order: 66 }
     ];
 
-    console.log('✅ Bible books retrieved successfully:', {
+    console.log('📋 Fallback books list prepared:', {
       bookCount: books.length,
       timestamp: new Date().toISOString()
     });
@@ -697,16 +652,160 @@ router.get('/books', authenticateToken, async (req, res) => {
       data: {
         books: books,
         total: books.length,
-        oldTestament: books.filter(book => book.testament === 'old').length,
-        newTestament: books.filter(book => book.testament === 'new').length
+        fallback: true
       }
+    });
+  }
+});
+
+// Get Specific Book Details
+router.get('/books/:bookId', authenticateToken, async (req, res) => {
+  const { bookId } = req.params;
+  
+  console.log('📖 Get Book Details Request:', {
+    userId: req.user.id,
+    bookId: bookId,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    console.log('🌐 Making request to Bible GO API for book details...');
+    
+    const response = await axios.get(`${BIBLE_API_BASE}/books/${bookId}`);
+    const book = response.data;
+
+    console.log('✅ Book details retrieved successfully:', {
+      bookId: book.id,
+      bookName: book.name,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: book
     });
 
   } catch (error) {
-    console.error('❌ Get Bible books error:', error);
-    res.status(500).json({
+    console.error('❌ Get book details error:', {
+      bookId: bookId,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.status(error.response?.status || 500).json({
       success: false,
-      error: 'Failed to retrieve Bible books',
+      error: 'Failed to retrieve book details',
+      message: error.message
+    });
+  }
+});
+
+// Get Chapter
+// GET /api/bible/books/:bookId/chapters/:chapterId?translation=KJV
+router.get('/books/:bookId/chapters/:chapterId', authenticateToken, async (req, res) => {
+  const { bookId, chapterId } = req.params;
+  const { translation = 'KJV' } = req.query;
+  
+  console.log('📖 Get Chapter Request:', {
+    userId: req.user.id,
+    bookId: bookId,
+    chapterId: chapterId,
+    translation: translation,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const translationId = getTranslationId(translation);
+    const url = `${BIBLE_API_BASE}/books/${bookId}/chapters/${chapterId}?translation=${translationId}`;
+    
+    console.log('🌐 Making request to Bible GO API:', { url });
+    
+    const response = await axios.get(url);
+    const chapter = response.data;
+
+    console.log('✅ Chapter retrieved successfully:', {
+      bookId: bookId,
+      chapterId: chapterId,
+      translation: translationId,
+      verseCount: chapter.verses?.length || 0,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: chapter
+    });
+
+  } catch (error) {
+    console.error('❌ Get chapter error:', {
+      bookId: bookId,
+      chapterId: chapterId,
+      translation: translation,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: 'Failed to retrieve chapter',
+      message: error.message
+    });
+  }
+});
+
+// Get Specific Verse
+// GET /api/bible/books/:bookId/chapters/:chapterId/:verseId?translation=KJV
+router.get('/books/:bookId/chapters/:chapterId/:verseId', authenticateToken, async (req, res) => {
+  const { bookId, chapterId, verseId } = req.params;
+  const { translation = 'KJV' } = req.query;
+  
+  console.log('📖 Get Verse Request:', {
+    userId: req.user.id,
+    bookId: bookId,
+    chapterId: chapterId,
+    verseId: verseId,
+    translation: translation,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const translationId = getTranslationId(translation);
+    const url = `${BIBLE_API_BASE}/books/${bookId}/chapters/${chapterId}/${verseId}?translation=${translationId}`;
+    
+    console.log('🌐 Making request to Bible GO API:', { url });
+    
+    const response = await axios.get(url);
+    const verse = response.data;
+
+    console.log('✅ Verse retrieved successfully:', {
+      bookId: bookId,
+      chapterId: chapterId,
+      verseId: verseId,
+      translation: translationId,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: verse
+    });
+
+  } catch (error) {
+    console.error('❌ Get verse error:', {
+      bookId: bookId,
+      chapterId: chapterId,
+      verseId: verseId,
+      translation: translation,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: 'Failed to retrieve verse',
       message: error.message
     });
   }
@@ -1035,11 +1134,11 @@ Important: Provide an actual, real Bible verse from the specified version. Do no
     const responseData = {
       bible: actualBibleVersion,
       originalBibleRequested: userBible,
-      category: category,
+        category: category,
       passage: randomPassage,
       text: passageText,
       reference: randomPassage,
-      prayedAt: new Date().toISOString(),
+        prayedAt: new Date().toISOString(),
       isNew: true,
       validationMessage: verseData.message || null,
       isValidBibleVersion: verseData.isValid
