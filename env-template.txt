@@ -23,6 +23,8 @@ FRONTEND_URL=https://1befd1562ae3.ngrok-free.app
 EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
 # Production - Use your app scheme
 # EXPO_RETURN_URL=faithfulcompanion://auth/callback
+# For Google account linking (if different from login)
+EXPO_LINK_RETURN_URL=faithfulcompanion://auth/link-callback
 
 # CORS Configuration
 ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002,https://1befd1562ae3.ngrok-free.app
