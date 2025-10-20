@@ -586,19 +586,15 @@ router.get('/google/mobile-callback', async (req, res) => {
             <p>Redirecting you back to the app...</p>
             <div class="spinner"></div>
           </div>
+          <meta http-equiv="refresh" content="0;url=${redirectUrl.toString()}">
           <script>
-            // Trigger the deep link
-            window.location.href = "${redirectUrl.toString()}";
-            
-            // Close the browser after a short delay
-            setTimeout(function() {
-              window.close();
-            }, 1000);
+            // Trigger the deep link immediately
+            window.location.replace("${redirectUrl.toString()}");
             
             // Fallback: if the app doesn't open, show a message
             setTimeout(function() {
-              document.body.innerHTML = '<div class="container"><div class="success-icon">✓</div><h1>Authentication Complete!</h1><p>You can close this window and return to the app.</p></div>';
-            }, 3000);
+              document.body.innerHTML = '<div class="container"><div class="success-icon">✓</div><h1>Authentication Complete!</h1><p>If the app didn\'t open, you can close this window and return to the app manually.</p><button onclick="window.location.replace(\\'${redirectUrl.toString()}\\')" style="margin-top: 1rem; padding: 0.75rem 1.5rem; background: white; color: #667eea; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer;">Try Again</button></div>';
+            }, 2000);
           </script>
         </body>
       </html>
