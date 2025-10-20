@@ -236,7 +236,9 @@ const studyGroupRoutes = require('./routes/study-groups');
 const bibleRoutes = require('./routes/bible');
 const prayerRoutes = require('./routes/prayer');
 const livekitRoutes = require('./routes/livekit');
+const userProfileRoutes = require('./routes/user-profile');
 const { initializeDatabase } = require('./config/database');
+const { startEngagementCronJobs } = require('./utils/engagementCronJobs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -278,6 +280,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Initialize database
 initializeDatabase();
 
+// Start engagement tracking cron jobs
+startEngagementCronJobs();
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -286,6 +291,7 @@ app.use('/api/study-groups', studyGroupRoutes);
 app.use('/api/bible', bibleRoutes);
 app.use('/api/prayer', prayerRoutes);
 app.use('/api/livekit', livekitRoutes);
+app.use('/api/users', userProfileRoutes); // User engagement tracking
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -301,7 +307,9 @@ app.get('/api/health', (req, res) => {
       'Study Groups: /api/study-groups',
       'Bible API: /api/bible',
       'Prayer Requests: /api/prayer',
-      'LiveKit Video: /api/livekit'
+      'LiveKit Video: /api/livekit',
+      'User Engagement: /api/users/profile/usage, /api/users/profile/streak',
+      'Leaderboard: /api/users/streak/leaderboard'
     ]
   });
 });
