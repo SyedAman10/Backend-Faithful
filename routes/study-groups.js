@@ -244,10 +244,7 @@ router.post('/create', authenticateToken, async (req, res) => {
     if (!user.google_access_token) {
       return res.status(403).json({
         success: false,
-        error: 'Google Calendar access not granted',
-        message: 'To create study groups with Google Meet, you need to link your Google account. Please authenticate with Google Calendar first.',
-        requiresGoogleAuth: true,
-        helpText: 'Use the /api/auth/google/link-url endpoint to get the OAuth URL, then call /api/auth/link-google with the authorization code.'
+        error: 'Google Calendar access not granted. Please authenticate with Google first.'
       });
     }
 
@@ -721,10 +718,7 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
     if (!user.google_access_token) {
       return res.status(403).json({
         success: false,
-        error: 'Google Calendar access not granted',
-        message: 'To create study groups with Google Meet, you need to link your Google account. Please authenticate with Google Calendar first.',
-        requiresGoogleAuth: true,
-        helpText: 'Use the /api/auth/google/link-url endpoint to get the OAuth URL, then call /api/auth/link-google with the authorization code.'
+        error: 'Google Calendar access not granted. Please authenticate with Google first.'
       });
     }
 
