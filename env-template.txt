@@ -21,8 +21,8 @@ FRONTEND_URL=https://1befd1562ae3.ngrok-free.app
 # Expo Configuration (for mobile auth)
 # Development
 EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
-# Production - Use your app scheme
-# EXPO_RETURN_URL=faithfulcompanion://auth/callback
+# Production - Use your app scheme (deep link)
+# EXPO_RETURN_URL=faithfulcompanion://oauth-callback
 
 # CORS Configuration
 ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002,https://1befd1562ae3.ngrok-free.app

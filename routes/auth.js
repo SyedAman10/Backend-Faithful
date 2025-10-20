@@ -294,7 +294,50 @@ router.get('/google/mobile-callback', async (req, res) => {
         timestamp: new Date().toISOString()
       });
       const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/auth/callback';
-      return res.redirect(`${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
+      const errorUrl = `${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`;
+      
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>OAuth Error</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                color: white;
+              }
+              .container { text-align: center; padding: 2rem; }
+              .error-icon { font-size: 4rem; margin-bottom: 1rem; }
+              h1 { font-size: 1.5rem; margin: 0 0 0.5rem 0; }
+              p { font-size: 1rem; opacity: 0.9; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="error-icon">✗</div>
+              <h1>OAuth Error</h1>
+              <p>Returning to app...</p>
+            </div>
+            <script>
+              window.location.href = "${errorUrl}";
+              setTimeout(function() { window.close(); }, 1000);
+              setTimeout(function() {
+                document.body.innerHTML = '<div class="container"><div class="error-icon">✗</div><h1>OAuth Error</h1><p>You can close this window and return to the app.</p></div>';
+              }, 3000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      return res.send(errorHtml);
     }
     
     console.log('Mobile callback received:', { code });
@@ -306,12 +349,98 @@ router.get('/google/mobile-callback', async (req, res) => {
 
     if (!code) {
       console.log('❌ No code received, redirecting with error');
-      return res.redirect(`${EXPO_RETURN_URL}?error=NoCode`);
+      const errorUrl = `${EXPO_RETURN_URL}?error=NoCode`;
+      
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>No Code</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                color: white;
+              }
+              .container { text-align: center; padding: 2rem; }
+              .error-icon { font-size: 4rem; margin-bottom: 1rem; }
+              h1 { font-size: 1.5rem; margin: 0 0 0.5rem 0; }
+              p { font-size: 1rem; opacity: 0.9; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="error-icon">✗</div>
+              <h1>No Authorization Code</h1>
+              <p>Returning to app...</p>
+            </div>
+            <script>
+              window.location.href = "${errorUrl}";
+              setTimeout(function() { window.close(); }, 1000);
+              setTimeout(function() {
+                document.body.innerHTML = '<div class="container"><div class="error-icon">✗</div><h1>No Authorization Code</h1><p>You can close this window and return to the app.</p></div>';
+              }, 3000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      return res.send(errorHtml);
     }
 
     if (code.length < 10) {
       console.log('❌ Invalid code received, redirecting with error');
-      return res.redirect(`${EXPO_RETURN_URL}?error=InvalidCode`);
+      const errorUrl = `${EXPO_RETURN_URL}?error=InvalidCode`;
+      
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Invalid Code</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                color: white;
+              }
+              .container { text-align: center; padding: 2rem; }
+              .error-icon { font-size: 4rem; margin-bottom: 1rem; }
+              h1 { font-size: 1.5rem; margin: 0 0 0.5rem 0; }
+              p { font-size: 1rem; opacity: 0.9; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="error-icon">✗</div>
+              <h1>Invalid Authorization Code</h1>
+              <p>Returning to app...</p>
+            </div>
+            <script>
+              window.location.href = "${errorUrl}";
+              setTimeout(function() { window.close(); }, 1000);
+              setTimeout(function() {
+                document.body.innerHTML = '<div class="container"><div class="error-icon">✗</div><h1>Invalid Authorization Code</h1><p>You can close this window and return to the app.</p></div>';
+              }, 3000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      return res.send(errorHtml);
     }
 
     // Exchange code for tokens and generate JWT
@@ -387,8 +516,8 @@ router.get('/google/mobile-callback', async (req, res) => {
       return res.json(jsonResponse);
     }
 
-    // Redirect to Expo return URL with JWT token and user data
-    console.log('✅ Authentication successful, redirecting to Expo with JWT token');
+    // Return HTML page that will trigger the deep link and close the browser
+    console.log('✅ Authentication successful, returning HTML to trigger deep link');
     const redirectUrl = new URL(EXPO_RETURN_URL);
     redirectUrl.searchParams.set('token', user.token);
     redirectUrl.searchParams.set('name', user.userData.name);
@@ -399,7 +528,83 @@ router.get('/google/mobile-callback', async (req, res) => {
     console.log('🔄 Full redirect URL with token:', redirectUrl.toString());
     console.log('🔄 Redirect URL Length:', redirectUrl.toString().length);
     
-    return res.redirect(redirectUrl.toString());
+    // Return HTML that will trigger the deep link
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Authentication Successful</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+            }
+            .container {
+              text-align: center;
+              padding: 2rem;
+            }
+            .success-icon {
+              font-size: 4rem;
+              margin-bottom: 1rem;
+            }
+            h1 {
+              font-size: 1.5rem;
+              margin: 0 0 0.5rem 0;
+            }
+            p {
+              font-size: 1rem;
+              opacity: 0.9;
+            }
+            .spinner {
+              border: 3px solid rgba(255, 255, 255, 0.3);
+              border-top: 3px solid white;
+              border-radius: 50%;
+              width: 40px;
+              height: 40px;
+              animation: spin 1s linear infinite;
+              margin: 1rem auto;
+            }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="success-icon">✓</div>
+            <h1>Authentication Successful!</h1>
+            <p>Redirecting you back to the app...</p>
+            <div class="spinner"></div>
+          </div>
+          <script>
+            // Trigger the deep link
+            window.location.href = "${redirectUrl.toString()}";
+            
+            // Close the browser after a short delay
+            setTimeout(function() {
+              window.close();
+            }, 1000);
+            
+            // Fallback: if the app doesn't open, show a message
+            setTimeout(function() {
+              document.body.innerHTML = '<div class="container"><div class="success-icon">✓</div><h1>Authentication Complete!</h1><p>You can close this window and return to the app.</p></div>';
+            }, 3000);
+          </script>
+        </body>
+      </html>
+    `;
+    
+    return res.send(html);
   } catch (error) {
     console.error('❌ Mobile callback error:', {
       error: error.message,
@@ -425,7 +630,70 @@ router.get('/google/mobile-callback', async (req, res) => {
     
     const errorRedirectUrl = `${EXPO_RETURN_URL}?error=AuthFailed&message=${encodeURIComponent(error.message)}`;
     console.log('🔄 Error Redirect URL:', errorRedirectUrl);
-    return res.redirect(errorRedirectUrl);
+    
+    // Return HTML that will trigger the deep link with error
+    const errorHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Authentication Failed</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+              color: white;
+            }
+            .container {
+              text-align: center;
+              padding: 2rem;
+            }
+            .error-icon {
+              font-size: 4rem;
+              margin-bottom: 1rem;
+            }
+            h1 {
+              font-size: 1.5rem;
+              margin: 0 0 0.5rem 0;
+            }
+            p {
+              font-size: 1rem;
+              opacity: 0.9;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="error-icon">✗</div>
+            <h1>Authentication Failed</h1>
+            <p>Returning to app...</p>
+          </div>
+          <script>
+            // Trigger the deep link with error
+            window.location.href = "${errorRedirectUrl}";
+            
+            // Close the browser after a short delay
+            setTimeout(function() {
+              window.close();
+            }, 1000);
+            
+            // Fallback: if the app doesn't open, show a message
+            setTimeout(function() {
+              document.body.innerHTML = '<div class="container"><div class="error-icon">✗</div><h1>Authentication Failed</h1><p>You can close this window and return to the app.</p></div>';
+            }, 3000);
+          </script>
+        </body>
+      </html>
+    `;
+    
+    return res.send(errorHtml);
   }
 });
 
@@ -917,3 +1185,4 @@ router.get('/verify', authenticateToken, (req, res) => {
 });
 
 module.exports = router;
+
