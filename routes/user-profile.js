@@ -28,7 +28,7 @@ function calculateFreezeReward(days) {
 // POST /api/users/profile/usage - Track app usage statistics
 router.post('/profile/usage', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const {
       totalSessions,
       totalTimeSpent,
@@ -96,7 +96,7 @@ router.post('/profile/usage', authenticateToken, async (req, res) => {
 // GET /api/users/profile/usage - Get user's usage statistics
 router.get('/profile/usage', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const result = await pool.query(
       'SELECT * FROM user_usage_stats WHERE user_id = $1',
@@ -144,7 +144,7 @@ router.get('/profile/usage', authenticateToken, async (req, res) => {
 // POST /api/users/profile/streak - Update user's daily streak
 router.post('/profile/streak', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const {
       currentStreak,
       longestStreak,
@@ -276,7 +276,7 @@ router.post('/profile/streak', authenticateToken, async (req, res) => {
 // GET /api/users/profile/streak - Get user's streak data
 router.get('/profile/streak', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const result = await pool.query(
       'SELECT * FROM user_streaks WHERE user_id = $1',
@@ -340,7 +340,7 @@ router.get('/profile/streak', authenticateToken, async (req, res) => {
 // GET /api/users/profile/milestones - Get user's achieved milestones
 router.get('/profile/milestones', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const result = await pool.query(
       'SELECT * FROM streak_milestones WHERE user_id = $1 ORDER BY milestone_days ASC',
@@ -369,7 +369,7 @@ router.get('/profile/milestones', authenticateToken, async (req, res) => {
 // GET /api/users/streak/leaderboard - Get streak leaderboard
 router.get('/streak/leaderboard', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const limit = parseInt(req.query.limit) || 50;
     const period = req.query.period || 'current'; // current, longest, total_days
 
