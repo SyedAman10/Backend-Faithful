@@ -950,9 +950,123 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // For now, we'll use a placeholder text
-    // In a real implementation, you would fetch from Bible GO API
-    const passageText = `This is ${randomPassage} from the ${userBible} Bible. [Fetch actual text from Bible GO API]`;
+    // Parse the reference and fetch from Bible GO API
+    // Format examples: "Ps 23:1-4", "John 3:16", "Phil 4:6-7"
+    const refMatch = randomPassage.match(/^([A-Za-z0-9\s]+)\s+(\d+):(\d+)(-(\d+))?/);
+    
+    if (!refMatch) {
+      console.error('❌ Failed to parse reference:', randomPassage);
+      throw new Error(`Invalid reference format: ${randomPassage}`);
+    }
+
+    const bookAbbrev = refMatch[1].trim();
+    const chapterNum = parseInt(refMatch[2]);
+    const verseStart = parseInt(refMatch[3]);
+    const verseEnd = refMatch[5] ? parseInt(refMatch[5]) : verseStart;
+
+    console.log('📝 Parsed reference:', {
+      original: randomPassage,
+      book: bookAbbrev,
+      chapter: chapterNum,
+      verseStart: verseStart,
+      verseEnd: verseEnd,
+      timestamp: new Date().toISOString()
+    });
+
+    // Map book abbreviations to Bible GO API book IDs
+    const bookIdMap = {
+      'Gen': 1, 'Exod': 2, 'Lev': 3, 'Num': 4, 'Deut': 5,
+      'Josh': 6, 'Judg': 7, 'Ruth': 8, '1Sam': 9, '2Sam': 10,
+      '1Kgs': 11, '2Kgs': 12, '1Chr': 13, '2Chr': 14,
+      'Ezra': 15, 'Neh': 16, 'Esth': 17, 'Job': 18, 'Ps': 19,
+      'Prov': 20, 'Eccl': 21, 'Song': 22, 'Isa': 23,
+      'Jer': 24, 'Lam': 25, 'Ezek': 26, 'Dan': 27,
+      'Hos': 28, 'Joel': 29, 'Amos': 30, 'Obad': 31, 'Jonah': 32,
+      'Mic': 33, 'Nah': 34, 'Hab': 35, 'Zeph': 36, 'Hag': 37,
+      'Zech': 38, 'Mal': 39,
+      'Matt': 40, 'Mark': 41, 'Luke': 42, 'John': 43, 'Acts': 44,
+      'Rom': 45, '1Cor': 46, '2Cor': 47, 'Gal': 48,
+      'Eph': 49, 'Phil': 50, 'Col': 51,
+      '1Thess': 52, '2Thess': 53,
+      '1Tim': 54, '2Tim': 55, 'Titus': 56, 'Phlm': 57,
+      'Heb': 58, 'Jas': 59, '1Pet': 60, '2Pet': 61,
+      '1John': 62, '2John': 63, '3John': 64, 'Jude': 65, 'Rev': 66
+    };
+
+    const bookId = bookIdMap[bookAbbrev];
+    
+    if (!bookId) {
+      console.error('❌ Unknown book abbreviation:', bookAbbrev);
+      throw new Error(`Unknown book: ${bookAbbrev}`);
+    }
+
+    // Get translation ID
+    const translationId = getTranslationId(userBible);
+    
+    console.log('🌐 Fetching verses from Bible GO API...', {
+      translation: translationId,
+      bookId: bookId,
+      bookName: bookAbbrev,
+      chapter: chapterNum,
+      verses: `${verseStart}-${verseEnd}`,
+      timestamp: new Date().toISOString()
+    });
+
+    // Fetch verses from Bible GO API
+    let passageText = '';
+    
+    try {
+      // Fetch the entire chapter
+      const apiUrl = `${BIBLE_API_BASE}/books/${bookId}/chapters/${chapterNum}?translation=${translationId}`;
+      console.log('📡 API URL:', apiUrl);
+
+      const apiResponse = await axios.get(apiUrl);
+      
+      console.log('📥 Bible GO API response received:', {
+        status: apiResponse.status,
+        hasVerses: !!apiResponse.data?.verses,
+        versesCount: apiResponse.data?.verses?.length,
+        timestamp: new Date().toISOString()
+      });
+
+      // Extract the specific verses we need
+      const verses = apiResponse.data?.verses || [];
+      
+      // Find and concatenate the verses in the range
+      const verseTexts = [];
+      for (let i = verseStart; i <= verseEnd; i++) {
+        const verse = verses.find(v => v.verse === i);
+        if (verse && verse.text) {
+          verseTexts.push(verse.text.trim());
+        }
+      }
+      
+      passageText = verseTexts.join(' ');
+
+      if (!passageText) {
+        console.error('❌ No verse text found in API response');
+        throw new Error('Verse text not found');
+      }
+
+      console.log('✅ Verse text extracted:', {
+        reference: randomPassage,
+        textLength: passageText.length,
+        textPreview: passageText.substring(0, 100) + '...',
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (apiError) {
+      console.error('❌ Bible GO API error:', {
+        error: apiError.message,
+        status: apiError.response?.status,
+        statusText: apiError.response?.statusText,
+        url: apiError.config?.url,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Fallback to a simple text if API fails
+      passageText = `${randomPassage} (${translationId}) - Unable to fetch verse text at this time.`;
+    }
 
     console.log('📝 Verse data prepared:', {
       bibleVersion: userBible,
