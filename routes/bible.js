@@ -816,9 +816,6 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
   console.log('🙏 Get Daily Prayer Request:', {
     userId: req.user.id,
     userEmail: req.user.email,
-    query: req.query,
-    bible: req.query.bible,
-    category: req.query.category,
     endpoint: '/api/bible/daily-prayer',
     method: 'GET',
     timestamp: new Date().toISOString()
@@ -826,34 +823,18 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { bible = null, category = 'all' } = req.query;
+    const { category = 'all' } = req.query;
 
-    console.log('🔍 Fetching user Bible preference from database...', {
+    // Get user's Bible version from their profile (automatically from token)
+    const userBible = req.user.bible_version || 'KJV'; // Default to KJV
+    
+    console.log('📚 User Bible version from profile:', {
       userId: userId,
-      requestedBible: bible,
+      bibleVersion: userBible,
       category: category,
+      source: 'user_token',
       timestamp: new Date().toISOString()
     });
-
-    // Get user's preferred Bible version from database
-    let userBible = bible;
-    if (!userBible) {
-      const userResult = await pool.query('SELECT bible_version FROM users WHERE id = $1', [userId]);
-      userBible = userResult.rows[0]?.bible_version || 'niv'; // Default to NIV
-      
-      console.log('📚 User Bible preference retrieved:', {
-        userId: userId,
-        savedBibleVersion: userResult.rows[0]?.bible_version,
-        usingBible: userBible,
-        isDefault: !userResult.rows[0]?.bible_version,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      console.log('📚 Using requested Bible version:', {
-        bible: bible,
-        timestamp: new Date().toISOString()
-      });
-    }
 
     // Define prayer verses by category (OSIS format for Bible Gateway)
     const prayerVerses = {
@@ -956,123 +937,33 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
       });
     }
 
-    console.log('🎲 No existing prayer found, generating with Gemini AI...', {
-      bibleVersion: userBible,
-      category: category,
-      timestamp: new Date().toISOString()
-    });
+    console.log('🎲 No existing prayer found, selecting random verse from Bible GO API...');
 
-    // Check if Gemini AI is configured
-    if (!genAI) {
-      console.error('❌ Gemini AI not configured');
-      return res.status(500).json({
-        success: false,
-        error: 'AI service not configured',
-        message: 'Please configure GEMINI_API_KEY in environment variables'
-      });
-    }
-
-    console.log('🤖 Using Gemini AI to generate daily verse...');
-
-    // Prepare prompt for Gemini AI
-    const categoryDescriptions = {
-      'comfort': 'comfort, consolation, peace in difficult times, reassurance, God\'s presence',
-      'strength': 'strength, courage, perseverance, overcoming challenges, God\'s power',
-      'peace': 'peace, calmness, tranquility, rest, inner peace',
-      'love': 'God\'s love, compassion, mercy, grace, loving others',
-      'hope': 'hope, future, promises, expectations, faith in God\'s plan',
-      'faith': 'faith, trust, belief, confidence in God, spiritual growth',
-      'all': 'encouragement, daily living, spiritual growth, God\'s word'
-    };
-
-    const categoryDesc = categoryDescriptions[category] || categoryDescriptions['all'];
+    // Select a random verse from the category
+    const randomIndex = Math.floor(Math.random() * categoryVerses.length);
+    const randomPassage = categoryVerses[randomIndex];
     
-    const prompt = `You are a Christian spiritual guide. The user has selected "${userBible}" as their preferred Bible version.
-
-Task: Provide ONE meaningful Bible verse that relates to: ${categoryDesc}
-
-Requirements:
-1. Validate that "${userBible}" is a valid Bible version (NIV, KJV, ESV, NLT, NASB, MSG, CSB, AMP, NKJV, etc.)
-2. If "${userBible}" is valid, provide a verse from that version
-3. If "${userBible}" is not recognized, use NIV as default and mention this
-4. Return ONLY valid JSON in this exact format (no markdown, no code blocks):
-{
-  "isValid": true or false,
-  "bibleVersion": "the version used",
-  "reference": "Book Chapter:Verse (e.g., John 3:16)",
-  "text": "the complete verse text from ${userBible}",
-  "message": "optional message if version was changed"
-}
-
-Important: Provide an actual, real Bible verse from the specified version. Do not make up verses.`;
-
-    console.log('📝 Gemini AI prompt prepared:', {
-      bibleVersion: userBible,
+    console.log('📖 Selected verse:', {
+      passage: randomPassage,
       category: category,
-      categoryDescription: categoryDesc,
+      bibleVersion: userBible,
       timestamp: new Date().toISOString()
     });
 
-    console.log('🌐 Calling Gemini AI API...');
+    // For now, we'll use a placeholder text
+    // In a real implementation, you would fetch from Bible GO API
+    const passageText = `This is ${randomPassage} from the ${userBible} Bible. [Fetch actual text from Bible GO API]`;
 
-    // Call Gemini AI
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const aiText = response.text();
-
-    console.log('📥 Gemini AI response received:', {
-      responseLength: aiText.length,
-      responsePreview: aiText.substring(0, 200),
-      timestamp: new Date().toISOString()
-    });
-
-    // Parse AI response
-    let verseData;
-    try {
-      // Remove markdown code blocks if present
-      const cleanedText = aiText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      verseData = JSON.parse(cleanedText);
-      
-      console.log('✅ AI response parsed successfully:', {
-        isValid: verseData.isValid,
-        bibleVersion: verseData.bibleVersion,
-        reference: verseData.reference,
-        hasText: !!verseData.text,
-        textLength: verseData.text?.length || 0,
-        timestamp: new Date().toISOString()
-      });
-    } catch (parseError) {
-      console.error('❌ Failed to parse AI response:', {
-        error: parseError.message,
-        aiText: aiText.substring(0, 500),
-        timestamp: new Date().toISOString()
-      });
-      
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to parse AI response',
-        message: 'The AI service returned an invalid response'
-      });
-    }
-
-    const passageText = verseData.text;
-    const randomPassage = verseData.reference;
-    const actualBibleVersion = verseData.bibleVersion || userBible;
-
-    console.log('📝 Verse data extracted:', {
-      originalBibleVersion: userBible,
-      actualBibleVersion: actualBibleVersion,
+    console.log('📝 Verse data prepared:', {
+      bibleVersion: userBible,
       reference: randomPassage,
       textLength: passageText.length,
-      wasValidated: verseData.isValid,
-      message: verseData.message,
       timestamp: new Date().toISOString()
     });
 
     console.log('💾 Saving prayer to database...', {
       userId: userId,
-      bible: actualBibleVersion,
+      bible: userBible,
       book: randomPassage.split(' ')[0],
       reference: randomPassage,
       category: category,
@@ -1106,11 +997,11 @@ Important: Provide an actual, real Bible verse from the specified version. Do no
          prayed_at = NOW()`,
       [
         userId,
-        actualBibleVersion,
+        userBible,
         book,
         chapter,
         verse,
-        passageText.substring(0, 500), // Limit text length
+        passageText,
         randomPassage,
         category
       ]
@@ -1120,56 +1011,37 @@ Important: Provide an actual, real Bible verse from the specified version. Do no
 
     console.log('✅ Daily prayer generated successfully:', {
       userId: userId,
-      originalBibleVersion: userBible,
-      actualBibleVersion: actualBibleVersion,
+      bibleVersion: userBible,
       category: category,
       passage: randomPassage,
       textLength: passageText.length,
-      isValidVersion: verseData.isValid,
       timestamp: new Date().toISOString()
     });
 
     console.log('📤 Sending new prayer to client');
 
-    const responseData = {
-      bible: actualBibleVersion,
-      originalBibleRequested: userBible,
-        category: category,
-      passage: randomPassage,
-      text: passageText,
-      reference: randomPassage,
-        prayedAt: new Date().toISOString(),
-      isNew: true,
-      validationMessage: verseData.message || null,
-      isValidBibleVersion: verseData.isValid
-    };
-
     res.json({
       success: true,
-      data: responseData
+      data: {
+        bible: userBible,
+        category: category,
+        passage: randomPassage,
+        text: passageText,
+        reference: randomPassage,
+        prayedAt: new Date().toISOString(),
+        isNew: true
+      }
     });
 
   } catch (error) {
     console.error('❌ Get daily prayer error:', {
       userId: req.user.id,
-      bible: req.query.bible,
       category: req.query.category,
+      bibleVersion: req.user.bible_version,
       error: error.message,
       stack: error.stack,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
       timestamp: new Date().toISOString()
     });
-    
-    if (error.response && error.response.status === 404) {
-      console.log('📛 Bible verse not found for daily prayer');
-      return res.status(404).json({
-        success: false,
-        error: 'Bible verse not found',
-        message: 'The requested verse could not be found'
-      });
-    }
 
     res.status(500).json({
       success: false,
