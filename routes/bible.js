@@ -1024,20 +1024,21 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
       
       console.log('📥 Bible GO API response received:', {
         status: apiResponse.status,
-        hasVerses: !!apiResponse.data?.verses,
-        versesCount: apiResponse.data?.verses?.length,
+        isArray: Array.isArray(apiResponse.data),
+        versesCount: Array.isArray(apiResponse.data) ? apiResponse.data.length : 0,
         timestamp: new Date().toISOString()
       });
 
       // Extract the specific verses we need
-      const verses = apiResponse.data?.verses || [];
+      // API returns array directly, not wrapped in a verses property
+      const verses = Array.isArray(apiResponse.data) ? apiResponse.data : [];
       
       // Find and concatenate the verses in the range
       const verseTexts = [];
       for (let i = verseStart; i <= verseEnd; i++) {
-        const verse = verses.find(v => v.verse === i);
-        if (verse && verse.text) {
-          verseTexts.push(verse.text.trim());
+        const verseObj = verses.find(v => v.verseId === i);
+        if (verseObj && verseObj.verse) {
+          verseTexts.push(verseObj.verse.trim());
         }
       }
       
