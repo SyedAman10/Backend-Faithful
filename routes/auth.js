@@ -80,38 +80,66 @@ const handleUserAuth = async (userInfo, tokens) => {
   console.log('🔍 Checking if user exists in database...');
   const dbStartTime = Date.now();
   
-  // Check if user exists
+  // Check if user exists by google_id first
   let result = await pool.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
   let user;
   
   const dbQueryTime = Date.now() - dbStartTime;
-  console.log('📊 Database Query Result:', {
+  console.log('📊 Database Query Result (by google_id):', {
     userFound: result.rows.length > 0,
     queryTime: `${dbQueryTime}ms`,
     timestamp: new Date().toISOString()
   });
 
   if (result.rows.length === 0) {
-    // Create new user
-    console.log('🆕 Creating new user in database...');
-    const insertStartTime = Date.now();
+    // Check if user exists by email (could be email signup user)
+    console.log('🔍 User not found by google_id, checking by email...');
+    const emailResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     
-    const insertResult = await pool.query(
-      `INSERT INTO users (google_id, email, name, picture, google_access_token, google_refresh_token) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
-       RETURNING *`,
-      [googleId, email, name, picture, tokens.access_token, tokens.refresh_token]
-    );
-    
-    const insertTime = Date.now() - insertStartTime;
-    user = insertResult.rows[0];
-    
-    console.log('✅ New user created:', {
-      userId: user.id,
-      email: user.email,
-      insertTime: `${insertTime}ms`,
-      timestamp: new Date().toISOString()
-    });
+    if (emailResult.rows.length > 0) {
+      // User exists with email but no google_id - link Google account to existing user
+      console.log('🔗 Found existing user by email, linking Google account...');
+      const linkStartTime = Date.now();
+      
+      const updateResult = await pool.query(
+        `UPDATE users 
+         SET google_id = $1, name = $2, picture = $3, google_access_token = $4, google_refresh_token = $5, updated_at = CURRENT_TIMESTAMP 
+         WHERE email = $6 
+         RETURNING *`,
+        [googleId, name, picture, tokens.access_token, tokens.refresh_token, email]
+      );
+      
+      const linkTime = Date.now() - linkStartTime;
+      user = updateResult.rows[0];
+      
+      console.log('✅ Google account linked to existing user:', {
+        userId: user.id,
+        email: user.email,
+        linkTime: `${linkTime}ms`,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // Create new user
+      console.log('🆕 Creating new user in database...');
+      const insertStartTime = Date.now();
+      
+      const insertResult = await pool.query(
+        `INSERT INTO users (google_id, email, name, picture, google_access_token, google_refresh_token) 
+         VALUES ($1, $2, $3, $4, $5, $6) 
+         RETURNING *`,
+        [googleId, email, name, picture, tokens.access_token, tokens.refresh_token]
+      );
+      
+      const insertTime = Date.now() - insertStartTime;
+      user = insertResult.rows[0];
+      
+      console.log('✅ New user created:', {
+        userId: user.id,
+        email: user.email,
+        insertTime: `${insertTime}ms`,
+        timestamp: new Date().toISOString()
+      });
+    }
   } else {
     // Update existing user
     console.log('🔄 Updating existing user in database...');
