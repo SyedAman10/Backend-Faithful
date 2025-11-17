@@ -141,16 +141,16 @@ const handleUserAuth = async (userInfo, tokens) => {
       });
     }
   } else {
-    // Update existing user
+    // Update existing user (including email in case it changed in Google account)
     console.log('🔄 Updating existing user in database...');
     const updateStartTime = Date.now();
     
     const updateResult = await pool.query(
       `UPDATE users 
-       SET name = $1, picture = $2, google_access_token = $3, google_refresh_token = $4, updated_at = CURRENT_TIMESTAMP 
-       WHERE google_id = $5 
+       SET email = $1, name = $2, picture = $3, google_access_token = $4, google_refresh_token = $5, updated_at = CURRENT_TIMESTAMP 
+       WHERE google_id = $6 
        RETURNING *`,
-      [name, picture, tokens.access_token, tokens.refresh_token, googleId]
+      [email, name, picture, tokens.access_token, tokens.refresh_token, googleId]
     );
     
     const updateTime = Date.now() - updateStartTime;
@@ -601,13 +601,13 @@ router.post('/google', async (req, res) => {
       user = insertResult.rows[0];
       console.log('New user created:', email);
     } else {
-      // Update existing user
+      // Update existing user (including email in case it changed)
       const updateResult = await pool.query(
         `UPDATE users 
-         SET name = $1, picture = $2, google_access_token = $3, updated_at = CURRENT_TIMESTAMP 
-         WHERE google_id = $4 
+         SET email = $1, name = $2, picture = $3, google_access_token = $4, updated_at = CURRENT_TIMESTAMP 
+         WHERE google_id = $5 
          RETURNING *`,
-        [name, picture, accessToken, googleId]
+        [email, name, picture, accessToken, googleId]
       );
       user = updateResult.rows[0];
       console.log('Existing user updated:', email);
