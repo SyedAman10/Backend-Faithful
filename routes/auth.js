@@ -942,5 +942,437 @@ router.get('/verify', authenticateToken, (req, res) => {
   });
 });
 
+// ========== GOOGLE CALENDAR AUTHENTICATION ENDPOINTS (Separate from Sign Up) ==========
+
+// Get Google Calendar OAuth URL - SEPARATE from signup
+router.get('/google-calendar/url', authenticateToken, (req, res) => {
+  const { platform } = req.query;
+  
+  console.log('📅 Google Calendar OAuth URL Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    platform: platform || 'web',
+    userAgent: req.headers['user-agent'],
+    timestamp: new Date().toISOString()
+  });
+  
+  // Create a dedicated OAuth client for calendar with specific redirect URI
+  const calendarCallbackUrl = platform === 'mobile' 
+    ? `${getBackendUrl()}/api/auth/google-calendar/mobile-callback`
+    : `${getBackendUrl()}/api/auth/google-calendar/callback`;
+  
+  const calendarOAuthClient = createOAuthClient(calendarCallbackUrl);
+  
+  console.log('🔧 Calendar OAuth Client Configuration:', {
+    platform: platform || 'web',
+    redirectUri: calendarCallbackUrl,
+    userId: req.user.id
+  });
+
+  // Generate OAuth URL with calendar and Gmail scopes
+  const url = calendarOAuthClient.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/gmail.readonly' // Gmail access
+    ],
+    prompt: 'consent',
+    state: req.user.id.toString() // Pass user ID in state to link calendar to existing user
+  });
+  
+  console.log('🔗 Generated Calendar OAuth URL:', {
+    platform: platform || 'web',
+    urlLength: url.length,
+    containsState: url.includes('state'),
+    userId: req.user.id,
+    timestamp: new Date().toISOString()
+  });
+  
+  res.json({ 
+    success: true,
+    url,
+    message: 'Please authorize calendar access'
+  });
+});
+
+// Web Google Calendar OAuth callback
+router.get('/google-calendar/callback', async (req, res) => {
+  console.log('📅 Calendar Web Callback Received:', {
+    query: req.query,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { code, state, error: googleError } = req.query;
+    
+    // Check for errors from Google
+    if (googleError) {
+      console.log('❌ Google OAuth Error:', googleError);
+      const frontendUrl = getFrontendUrl();
+      return res.redirect(`${frontendUrl}/settings?calendarError=${encodeURIComponent(googleError)}`);
+    }
+    
+    if (!code || !state) {
+      console.log('❌ Missing code or state in callback');
+      const frontendUrl = getFrontendUrl();
+      return res.redirect(`${frontendUrl}/settings?calendarError=Missing authorization code`);
+    }
+
+    const userId = parseInt(state);
+    console.log('🔍 Linking calendar to user:', userId);
+
+    // Create OAuth client with calendar callback URL
+    const calendarCallbackUrl = `${getBackendUrl()}/api/auth/google-calendar/callback`;
+    const calendarOAuthClient = createOAuthClient(calendarCallbackUrl);
+    
+    // Exchange code for tokens
+    console.log('🔄 Exchanging code for tokens...');
+    const { tokens } = await calendarOAuthClient.getToken(code);
+    calendarOAuthClient.setCredentials(tokens);
+    
+    console.log('🔑 Calendar Tokens Received:', { 
+      hasAccessToken: !!tokens.access_token, 
+      hasRefreshToken: !!tokens.refresh_token 
+    });
+
+    // Get user info from Google (includes actual email and Gmail)
+    const oauth2 = google.oauth2({ auth: calendarOAuthClient, version: 'v2' });
+    const { data: userInfo } = await oauth2.userinfo.get();
+    
+    console.log('👤 Google User Info Retrieved:', {
+      email: userInfo.email,
+      verifiedEmail: userInfo.verified_email,
+      name: userInfo.name
+    });
+    
+    // Update user record with calendar tokens and Gmail email
+    await pool.query(
+      `UPDATE users 
+       SET google_access_token = $1, 
+           google_refresh_token = $2, 
+           google_calendar_connected = TRUE,
+           google_email = $3,
+           google_meet_access = TRUE,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $4`,
+      [tokens.access_token, tokens.refresh_token, userInfo.email, userId]
+    );
+
+    console.log('✅ Calendar Connected Successfully:', {
+      userId: userId,
+      googleEmail: userInfo.email
+    });
+
+    const frontendUrl = getFrontendUrl();
+    res.redirect(`${frontendUrl}/settings?calendarSuccess=true&email=${encodeURIComponent(userInfo.email)}`);
+    
+  } catch (error) {
+    console.error('❌ Calendar callback error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
+    const frontendUrl = getFrontendUrl();
+    res.redirect(`${frontendUrl}/settings?calendarError=${encodeURIComponent(error.message)}`);
+  }
+});
+
+// Mobile Google Calendar OAuth callback
+router.get('/google-calendar/mobile-callback', async (req, res) => {
+  console.log('📱 Calendar Mobile Callback Received:', {
+    method: req.method,
+    url: req.url,
+    query: req.query,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { code, state, error: googleError } = req.query;
+    
+    const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/calendar/callback';
+    
+    // Check for Google OAuth errors
+    if (googleError) {
+      console.log('❌ Google OAuth Error:', googleError);
+      return res.redirect(302, `${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
+    }
+    
+    if (!code || !state) {
+      console.log('❌ Missing code or state');
+      return res.redirect(302, `${EXPO_RETURN_URL}?error=MissingParameters`);
+    }
+
+    const userId = parseInt(state);
+    console.log('🔍 Linking calendar to user:', userId);
+
+    // Create OAuth client with calendar mobile callback URL
+    const calendarCallbackUrl = `${getBackendUrl()}/api/auth/google-calendar/mobile-callback`;
+    const calendarOAuthClient = createOAuthClient(calendarCallbackUrl);
+    
+    // Exchange code for tokens
+    console.log('🔄 Exchanging code for tokens...');
+    const startTime = Date.now();
+    const { tokens } = await calendarOAuthClient.getToken(code);
+    
+    console.log('🔑 Calendar Tokens Received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      tokenExchangeTime: `${Date.now() - startTime}ms`
+    });
+
+    calendarOAuthClient.setCredentials(tokens);
+
+    // Get user info from Google
+    console.log('👤 Fetching Google user info...');
+    const oauth2 = google.oauth2({ auth: calendarOAuthClient, version: 'v2' });
+    const { data: userInfo } = await oauth2.userinfo.get();
+    
+    console.log('👤 Google User Info Retrieved:', {
+      email: userInfo.email,
+      verifiedEmail: userInfo.verified_email,
+      name: userInfo.name,
+      userId: userId
+    });
+    
+    // Update user record with calendar tokens and Gmail email
+    console.log('💾 Updating user with calendar access...');
+    await pool.query(
+      `UPDATE users 
+       SET google_access_token = $1, 
+           google_refresh_token = $2, 
+           google_calendar_connected = TRUE,
+           google_email = $3,
+           google_meet_access = TRUE,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $4`,
+      [tokens.access_token, tokens.refresh_token, userInfo.email, userId]
+    );
+
+    console.log('✅ Calendar Connected Successfully:', {
+      userId: userId,
+      googleEmail: userInfo.email,
+      totalTime: `${Date.now() - startTime}ms`
+    });
+
+    // Check if the request wants JSON response
+    const wantsJson = req.headers['accept'] && req.headers['accept'].includes('application/json');
+    
+    if (wantsJson) {
+      console.log('📱 Mobile app requested JSON response');
+      return res.json({
+        success: true,
+        googleEmail: userInfo.email,
+        calendarConnected: true,
+        message: 'Google Calendar connected successfully'
+      });
+    }
+
+    // Redirect back to app
+    const redirectUrl = `${EXPO_RETURN_URL}?success=true&email=${encodeURIComponent(userInfo.email)}&calendarConnected=true`;
+    console.log('🔄 Redirecting to:', redirectUrl);
+    
+    return res.redirect(302, redirectUrl);
+    
+  } catch (error) {
+    console.error('❌ Calendar mobile callback error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    
+    const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/calendar/callback';
+    
+    const wantsJson = req.headers['accept'] && req.headers['accept'].includes('application/json');
+    
+    if (wantsJson) {
+      return res.json({
+        success: false,
+        error: 'CalendarConnectionFailed',
+        message: error.message
+      });
+    }
+    
+    return res.redirect(302, `${EXPO_RETURN_URL}?error=CalendarConnectionFailed&message=${encodeURIComponent(error.message)}`);
+  }
+});
+
+// Mobile POST endpoint for Google Calendar authentication with authorization code
+router.post('/google-calendar/connect', authenticateToken, async (req, res) => {
+  console.log('📱 Mobile Calendar Connection Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { code } = req.body;
+    
+    console.log('🔍 Request Body Analysis:', {
+      hasCode: !!code,
+      codeLength: code ? code.length : 0,
+      codePreview: code ? `${code.substring(0, 10)}...` : 'missing',
+      userId: req.user.id
+    });
+    
+    if (!code) {
+      console.log('❌ Missing authorization code');
+      return res.status(400).json({
+        success: false,
+        error: 'Authorization code is required'
+      });
+    }
+
+    // Create OAuth client with calendar mobile callback URL
+    const calendarCallbackUrl = `${getBackendUrl()}/api/auth/google-calendar/mobile-callback`;
+    const calendarOAuthClient = createOAuthClient(calendarCallbackUrl);
+
+    console.log('🔄 Starting token exchange with Google...');
+    const startTime = Date.now();
+    
+    const { tokens } = await calendarOAuthClient.getToken(code);
+    const tokenTime = Date.now() - startTime;
+    
+    console.log('🔑 Google Tokens Received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      tokenExchangeTime: `${tokenTime}ms`
+    });
+
+    calendarOAuthClient.setCredentials(tokens);
+
+    console.log('👤 Fetching Google user info...');
+    const oauth2 = google.oauth2({ auth: calendarOAuthClient, version: 'v2' });
+    const { data: userInfo } = await oauth2.userinfo.get();
+    
+    console.log('👤 Google User Info Retrieved:', {
+      email: userInfo.email,
+      verifiedEmail: userInfo.verified_email,
+      name: userInfo.name,
+      userId: req.user.id
+    });
+    
+    // Update user record with calendar tokens and Gmail email
+    console.log('💾 Updating user with calendar access...');
+    await pool.query(
+      `UPDATE users 
+       SET google_access_token = $1, 
+           google_refresh_token = $2, 
+           google_calendar_connected = TRUE,
+           google_email = $3,
+           google_meet_access = TRUE,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $4`,
+      [tokens.access_token, tokens.refresh_token, userInfo.email, req.user.id]
+    );
+
+    console.log('✅ Calendar Connected Successfully:', {
+      userId: req.user.id,
+      userEmail: req.user.email,
+      googleEmail: userInfo.email,
+      totalTime: `${Date.now() - startTime}ms`
+    });
+
+    const response = {
+      success: true,
+      googleEmail: userInfo.email,
+      calendarConnected: true,
+      gmailConnected: true,
+      message: 'Google Calendar and Gmail connected successfully'
+    };
+    
+    console.log('📤 Sending Success Response:', response);
+    res.json(response);
+    
+  } catch (error) {
+    console.error('❌ Calendar connection error:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.status(401).json({
+      success: false,
+      error: 'Calendar connection failed',
+      message: error.message
+    });
+  }
+});
+
+// Get calendar connection status
+router.get('/google-calendar/status', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔍 Checking calendar status for user:', req.user.id);
+    
+    const result = await pool.query(
+      'SELECT google_calendar_connected, google_email, google_meet_access FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
+    const user = result.rows[0];
+    
+    res.json({
+      success: true,
+      calendarConnected: user.google_calendar_connected || false,
+      googleEmail: user.google_email || null,
+      googleMeetAccess: user.google_meet_access || false
+    });
+    
+  } catch (error) {
+    console.error('❌ Error checking calendar status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check calendar status',
+      message: error.message
+    });
+  }
+});
+
+// Disconnect Google Calendar
+router.post('/google-calendar/disconnect', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔌 Disconnecting calendar for user:', req.user.id);
+    
+    await pool.query(
+      `UPDATE users 
+       SET google_access_token = NULL, 
+           google_refresh_token = NULL, 
+           google_calendar_connected = FALSE,
+           google_email = NULL,
+           google_meet_access = FALSE,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $1`,
+      [req.user.id]
+    );
+    
+    console.log('✅ Calendar disconnected successfully');
+    
+    res.json({
+      success: true,
+      message: 'Google Calendar disconnected successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Error disconnecting calendar:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to disconnect calendar',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
 
