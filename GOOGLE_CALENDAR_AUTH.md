@@ -113,9 +113,10 @@ curl -X GET "http://localhost:3000/api/auth/google-calendar/url?platform=mobile"
 **Description:** Handles the OAuth callback for mobile applications. Similar to web callback but redirects to Expo deep link.
 
 **Behavior:**
-- On success: Redirects to `{EXPO_RETURN_URL}?success=true&email={googleEmail}&calendarConnected=true`
-- On error: Redirects to `{EXPO_RETURN_URL}?error={errorType}&message={errorMessage}`
+- On success: Redirects to `faithfulcompanion://google-calendar-callback?success=true&userId={userId}&email={googleEmail}&calendarConnected=true`
+- On error: Redirects to `faithfulcompanion://google-calendar-callback?error={errorType}&message={errorMessage}`
 - If `Accept: application/json` header is present, returns JSON instead of redirect
+- Uses `MOBILE_CALENDAR_RETURN_URL` environment variable (defaults to `faithfulcompanion://google-calendar-callback`)
 
 **JSON Response (when requested):**
 ```json
@@ -278,8 +279,11 @@ BACKEND_URL=http://localhost:3000
 # Frontend URL (for web redirects)
 FRONTEND_URL=http://localhost:3000
 
-# Expo return URL (for mobile deep links)
-EXPO_RETURN_URL=exp://127.0.0.1:8081/--/calendar/callback
+# Expo return URL (for mobile deep links - main auth)
+EXPO_RETURN_URL=exp://127.0.0.1:8081/--/auth/callback
+
+# Mobile Calendar return URL (for calendar-specific auth)
+MOBILE_CALENDAR_RETURN_URL=faithfulcompanion://google-calendar-callback
 ```
 
 ---

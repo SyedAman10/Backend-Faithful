@@ -1093,17 +1093,18 @@ router.get('/google-calendar/mobile-callback', async (req, res) => {
   try {
     const { code, state, error: googleError } = req.query;
     
-    const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/calendar/callback';
+    // Use custom app scheme for mobile deep linking
+    const MOBILE_RETURN_URL = process.env.MOBILE_CALENDAR_RETURN_URL || 'faithfulcompanion://google-calendar-callback';
     
     // Check for Google OAuth errors
     if (googleError) {
       console.log('❌ Google OAuth Error:', googleError);
-      return res.redirect(302, `${EXPO_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
+      return res.redirect(302, `${MOBILE_RETURN_URL}?error=GoogleOAuthError&message=${encodeURIComponent(googleError)}`);
     }
     
     if (!code || !state) {
       console.log('❌ Missing code or state');
-      return res.redirect(302, `${EXPO_RETURN_URL}?error=MissingParameters`);
+      return res.redirect(302, `${MOBILE_RETURN_URL}?error=MissingParameters`);
     }
 
     const userId = parseInt(state);
@@ -1171,9 +1172,9 @@ router.get('/google-calendar/mobile-callback', async (req, res) => {
       });
     }
 
-    // Redirect back to app
-    const redirectUrl = `${EXPO_RETURN_URL}?success=true&email=${encodeURIComponent(userInfo.email)}&calendarConnected=true`;
-    console.log('🔄 Redirecting to:', redirectUrl);
+    // Redirect back to app using custom deep link scheme
+    const redirectUrl = `${MOBILE_RETURN_URL}?success=true&userId=${userId}&email=${encodeURIComponent(userInfo.email)}&calendarConnected=true`;
+    console.log('🔄 Redirecting to mobile app:', redirectUrl);
     
     return res.redirect(302, redirectUrl);
     
@@ -1184,7 +1185,7 @@ router.get('/google-calendar/mobile-callback', async (req, res) => {
       timestamp: new Date().toISOString()
     });
     
-    const EXPO_RETURN_URL = process.env.EXPO_RETURN_URL || 'exp://127.0.0.1:8081/--/calendar/callback';
+    const MOBILE_RETURN_URL = process.env.MOBILE_CALENDAR_RETURN_URL || 'faithfulcompanion://google-calendar-callback';
     
     const wantsJson = req.headers['accept'] && req.headers['accept'].includes('application/json');
     
@@ -1196,7 +1197,7 @@ router.get('/google-calendar/mobile-callback', async (req, res) => {
       });
     }
     
-    return res.redirect(302, `${EXPO_RETURN_URL}?error=CalendarConnectionFailed&message=${encodeURIComponent(error.message)}`);
+    return res.redirect(302, `${MOBILE_RETURN_URL}?error=CalendarConnectionFailed&message=${encodeURIComponent(error.message)}`);
   }
 });
 
