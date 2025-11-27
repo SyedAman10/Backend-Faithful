@@ -30,7 +30,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, email, name, picture, google_meet_access, denomination, bible_version, age_group, referral_source, bible_answers, bible_specific, profile_completed, created_at, updated_at FROM users WHERE id = $1',
+      `SELECT id, email, name, picture, google_meet_access, denomination, bible_version, age_group, 
+              referral_source, bible_answers, bible_specific, voice_id, voice_name, 
+              profile_completed, created_at, updated_at 
+       FROM users WHERE id = $1`,
       [req.user.id]
     );
 
@@ -328,7 +331,9 @@ router.put('/preferences', authenticateToken, async (req, res) => {
       ageGroup, 
       referralSource, 
       bibleAnswers, 
-      bibleSpecific 
+      bibleSpecific,
+      voiceId,
+      voiceName
     } = req.body;
 
     // Validate denomination length
@@ -360,6 +365,22 @@ router.put('/preferences', authenticateToken, async (req, res) => {
       return res.status(400).json({ 
         success: false,
         error: 'Referral source must be 100 characters or less' 
+      });
+    }
+
+    // Validate voice ID length
+    if (voiceId && voiceId.length > 200) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Voice ID must be 200 characters or less' 
+      });
+    }
+
+    // Validate voice name length
+    if (voiceName && voiceName.length > 100) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Voice name must be 100 characters or less' 
       });
     }
 
@@ -421,7 +442,8 @@ router.put('/preferences', authenticateToken, async (req, res) => {
        SET ${updateFields.join(', ')}
        WHERE id = $${paramCount} 
        RETURNING id, email, name, denomination, bible_version, age_group, 
-                 referral_source, bible_answers, bible_specific, profile_completed, updated_at`,
+                 referral_source, bible_answers, bible_specific, voice_id, voice_name, 
+                 profile_completed, updated_at`,
       updateValues
     );
 

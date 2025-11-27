@@ -371,6 +371,25 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Create user_verse_history table if not exists (for daily inspirational verses)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_verse_history (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        version VARCHAR(50) NOT NULL,
+        book VARCHAR(100) NOT NULL,
+        chapter INTEGER NOT NULL,
+        verse INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        reference VARCHAR(200) NOT NULL,
+        verse_date TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, version, book, chapter, verse) -- One verse per user
+      )
+    `);
+
+    console.log('✅ user_verse_history table created/verified');
+
     // Create user_weekly_study_plans table if not exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_weekly_study_plans (

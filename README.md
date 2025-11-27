@@ -88,10 +88,24 @@ The server will run on port 3000 by default.
 ### Other APIs
 
 - **Bible API**: See [BIBLE_API_LOGGING.md](./BIBLE_API_LOGGING.md)
+- **Daily Verse** (NEW): See [DAILY_VERSE_API.md](./DAILY_VERSE_API.md) - Separate from daily prayer
+- **Voice Preferences** (NEW): See [VOICE_PREFERENCES_API.md](./VOICE_PREFERENCES_API.md) - TTS voice settings
 - **Prayer Requests**: See [DAILY_PRAYER_API_GUIDE.md](./DAILY_PRAYER_API_GUIDE.md)
 - **Study Groups**: See [STUDY_GROUPS_API.md](./STUDY_GROUPS_API.md)
 - **User Engagement**: See [USER_ENGAGEMENT_API.md](./USER_ENGAGEMENT_API.md)
 - **LiveKit Integration**: See [LIVEKIT_INTEGRATION.md](./LIVEKIT_INTEGRATION.md)
+
+#### Daily Bible Content Endpoints
+
+Three separate endpoints for daily Bible content:
+
+| Endpoint | Purpose | Verses |
+|----------|---------|--------|
+| `GET /api/bible/daily-verse` | Daily inspirational verse | 100+ verses |
+| `GET /api/bible/daily-prayer?category=comfort` | Prayer-focused verse | 50+ verses (6 categories) |
+| `GET /api/bible/daily-reflection?theme=gratitude` | Reflection with prompts | 40+ verses (8 themes) |
+
+Each tracks separately - users can get all three daily and receive different content!
 
 ## Testing
 

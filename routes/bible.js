@@ -1166,6 +1166,282 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
   }
 });
 
+// Get Daily Verse (Random inspirational verse - different from daily prayer)
+router.get('/daily-verse', authenticateToken, async (req, res) => {
+  console.log('✨ Get Daily Verse Request:', {
+    userId: req.user.id,
+    userEmail: req.user.email,
+    endpoint: '/api/bible/daily-verse',
+    method: 'GET',
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const userId = req.user.id;
+    
+    // Get user's Bible version from their profile
+    const userBible = req.user.bible_version || 'KJV';
+    
+    console.log('📚 User Bible version from profile:', {
+      userId: userId,
+      bibleVersion: userBible,
+      source: 'user_token',
+      timestamp: new Date().toISOString()
+    });
+
+    // Daily inspirational verses (different from prayer verses) - OSIS format
+    const inspirationalVerses = [
+      // Wisdom & Guidance
+      'Prov 3:5-6', 'Prov 16:3', 'Prov 4:23', 'Prov 18:10', 'Prov 22:6',
+      'Ps 119:105', 'Ps 32:8', 'Ps 25:4-5', 'James 1:5',
+      
+      // Courage & Strength
+      'Josh 1:9', 'Deut 31:6', 'Isa 40:31', 'Isa 41:10', 'Isa 43:2',
+      'Phil 4:13', '2Tim 1:7', 'Ps 27:1', 'Ps 18:2',
+      
+      // Love & Grace
+      'John 3:16', 'Rom 8:38-39', 'Eph 2:8-9', '1John 4:9', 'Titus 2:11',
+      'Rom 5:8', 'Ps 136:26', 'Lam 3:22-23',
+      
+      // Joy & Peace
+      'Neh 8:10', 'John 16:33', 'Rom 15:13', 'Gal 5:22-23', 'Phil 4:4',
+      'Ps 16:11', 'John 14:27', 'Isa 26:3',
+      
+      // Hope & Trust
+      'Jer 29:11', 'Ps 37:4', 'Ps 62:5', 'Rom 8:28', 'Heb 11:1',
+      'Ps 130:5', 'Prov 3:5', 'Rom 5:5',
+      
+      // Purpose & Identity
+      'Jer 1:5', 'Eph 2:10', 'Ps 139:14', '1Pet 2:9', 'Gen 1:27',
+      'Phil 1:6', '2Cor 5:17', 'Isa 43:1',
+      
+      // Victory & Overcoming
+      'Rom 8:37', '1Cor 15:57', '1John 5:4', 'Phil 4:19', 'Ps 37:23-24',
+      'Prov 24:16', 'Mic 7:8',
+      
+      // Blessing & Prosperity  
+      'Num 6:24-26', 'Ps 1:1-3', 'Ps 23:1', 'Mal 3:10', 'Deut 28:2',
+      '3John 1:2', 'Ps 84:11',
+      
+      // Eternal Life & Salvation
+      'John 14:6', 'Acts 4:12', 'Rom 10:9', '1John 5:12', 'John 10:10',
+      'John 11:25-26', 'Titus 3:5',
+      
+      // Prayer & Worship
+      'Ps 145:18', 'Matt 7:7-8', 'John 4:23-24', 'Ps 100:4', '1Thess 5:16-18',
+      'Phil 4:6', 'James 5:16',
+      
+      // New Beginnings
+      'Isa 43:18-19', '2Cor 5:17', 'Rev 21:5', 'Lam 3:22-23', 'Ps 51:10'
+    ];
+
+    console.log('📖 Inspirational verses loaded:', {
+      totalVerses: inspirationalVerses.length,
+      firstVerse: inspirationalVerses[0],
+      lastVerse: inspirationalVerses[inspirationalVerses.length - 1],
+      timestamp: new Date().toISOString()
+    });
+
+    // Check if user already has a daily verse for today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    console.log('🔍 Checking for existing verse today...', {
+      userId: userId,
+      bible: userBible,
+      today: today.toISOString(),
+      tomorrow: tomorrow.toISOString(),
+      timestamp: new Date().toISOString()
+    });
+
+    const todayVerseResult = await pool.query(
+      `SELECT * FROM user_verse_history 
+       WHERE user_id = $1 AND version = $2 AND verse_date >= $3 AND verse_date < $4
+       ORDER BY verse_date DESC LIMIT 1`,
+      [userId, userBible, today.toISOString(), tomorrow.toISOString()]
+    );
+
+    console.log('📊 Database query result:', {
+      foundExistingVerse: todayVerseResult.rows.length > 0,
+      rowCount: todayVerseResult.rows.length,
+      timestamp: new Date().toISOString()
+    });
+
+    if (todayVerseResult.rows.length > 0) {
+      // User already has a verse for today - return it
+      const existingVerse = todayVerseResult.rows[0];
+      
+      console.log('✅ Returning existing daily verse:', {
+        userId: userId,
+        passage: existingVerse.reference,
+        verseDate: existingVerse.verse_date,
+        timestamp: new Date().toISOString()
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          bible: userBible,
+          passage: existingVerse.reference,
+          text: existingVerse.text,
+          reference: existingVerse.reference,
+          verseDate: existingVerse.verse_date,
+          isNew: false
+        }
+      });
+    }
+
+    // Get verses user has already seen (to avoid repeats)
+    console.log('🔍 Checking user verse history...');
+    const historyResult = await pool.query(
+      `SELECT book, chapter, verse FROM user_verse_history 
+       WHERE user_id = $1 AND version = $2`,
+      [userId, userBible]
+    );
+
+    const seenVerses = new Set(
+      historyResult.rows.map(row => `${row.book} ${row.chapter}:${row.verse}`)
+    );
+
+    console.log('📚 User verse history:', {
+      totalSeenVerses: seenVerses.size,
+      timestamp: new Date().toISOString()
+    });
+
+    // Filter out verses user has already seen
+    const unseenVerses = inspirationalVerses.filter(v => !seenVerses.has(v));
+    
+    console.log('🔍 Filtered verses:', {
+      totalInspirationalVerses: inspirationalVerses.length,
+      seenByUser: seenVerses.size,
+      unseenVerses: unseenVerses.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // If all verses have been seen, reset and use all verses
+    const availableVerses = unseenVerses.length > 0 ? unseenVerses : inspirationalVerses;
+    
+    if (unseenVerses.length === 0) {
+      console.log('🔄 All verses seen, resetting pool');
+    }
+
+    // Pick a random verse
+    const randomPassage = availableVerses[Math.floor(Math.random() * availableVerses.length)];
+    
+    console.log('🎲 Random verse selected:', {
+      passage: randomPassage,
+      availableCount: availableVerses.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // Parse the passage to get book, chapter, verse
+    const match = randomPassage.match(/^([0-9]?[A-Za-z]+)\s*(\d+):(\d+)(-\d+)?$/);
+    if (!match) {
+      throw new Error(`Invalid passage format: ${randomPassage}`);
+    }
+
+    const [, book, chapter, verse] = match;
+
+    // Fetch the verse using Bible Gateway API
+    console.log('🌐 Fetching verse from Bible Gateway...', {
+      passage: randomPassage,
+      version: userBible,
+      timestamp: new Date().toISOString()
+    });
+
+    // Use Bible Gateway scraping (same as daily-prayer)
+    const bibleGatewayUrl = `https://www.biblegateway.com/passage/?search=${encodeURIComponent(randomPassage)}&version=${encodeURIComponent(userBible)}`;
+    
+    const bibleGatewayResponse = await axios.get(bibleGatewayUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const html = bibleGatewayResponse.data;
+    
+    // Extract verse text (same regex as daily-prayer)
+    const verseMatch = html.match(/<div class="passage-content.*?<p.*?>(.*?)<\/p>/s);
+    let passageText = randomPassage;
+    
+    if (verseMatch && verseMatch[1]) {
+      passageText = verseMatch[1]
+        .replace(/<[^>]+>/g, '') // Remove HTML tags
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&rsquo;/g, "'")
+        .replace(/&ldquo;/g, '"')
+        .replace(/&rdquo;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    console.log('✅ Verse text extracted:', {
+      textLength: passageText.length,
+      hasText: passageText.length > randomPassage.length,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log('✅ Verse fetched successfully:', {
+      passage: randomPassage,
+      textLength: passageText.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // Save to user's verse history
+    await pool.query(
+      `INSERT INTO user_verse_history 
+       (user_id, version, book, chapter, verse, text, reference, verse_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, version, book, chapter, verse) DO UPDATE SET 
+         text = EXCLUDED.text,
+         reference = EXCLUDED.reference,
+         verse_date = NOW()`,
+      [userId, userBible, book, parseInt(chapter), parseInt(verse), passageText, randomPassage]
+    );
+
+    console.log('✅ Verse saved to database successfully');
+
+    console.log('✅ Daily verse generated successfully:', {
+      userId: userId,
+      bibleVersion: userBible,
+      passage: randomPassage,
+      textLength: passageText.length,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      data: {
+        bible: userBible,
+        passage: randomPassage,
+        text: passageText,
+        reference: randomPassage,
+        verseDate: new Date().toISOString(),
+        isNew: true
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get daily verse error:', {
+      userId: req.user.id,
+      bibleVersion: req.user.bible_version,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve daily verse',
+      message: error.message
+    });
+  }
+});
+
 // Update User Bible Version Preference
 router.put('/user-bible-version', authenticateToken, async (req, res) => {
   console.log('📖 Update User Bible Version Request:', {
