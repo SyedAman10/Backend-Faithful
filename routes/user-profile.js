@@ -321,6 +321,460 @@ router.post('/app-session', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/users/app-session - Get current streak and session stats (without tracking)
+router.get('/app-session', authenticateToken, async (req, res) => {
+  console.log('📊 Get App Session Stats Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const userId = req.user.id;
+
+    // Get user_streaks data
+    const streakResult = await pool.query(
+      'SELECT * FROM user_streaks WHERE user_id = $1',
+      [userId]
+    );
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let totalActiveDays = 0;
+    let lastActiveDate = null;
+    let streakMessage = '';
+    let freezesAvailable = 0;
+
+    if (streakResult.rows.length === 0) {
+      // No streak record yet
+      console.log('ℹ️ No streak record found for user:', userId);
+      streakMessage = '🎉 Open the app daily to start your streak!';
+    } else {
+      const streakData = streakResult.rows[0];
+      currentStreak = streakData.current_streak || 0;
+      longestStreak = streakData.longest_streak || 0;
+      totalActiveDays = streakData.total_active_days || 0;
+      lastActiveDate = streakData.last_active_date;
+      freezesAvailable = streakData.freezes_available || 0;
+
+      // Generate streak message
+      if (currentStreak === 0) {
+        streakMessage = '💪 Start your streak today!';
+      } else {
+        streakMessage = `🔥 ${currentStreak + 1} days in a row! Keep it up!`;
+      }
+
+      console.log('✅ Streak data found:', {
+        userId,
+        currentStreak,
+        longestStreak,
+        totalActiveDays
+      });
+    }
+
+    // Get user_usage_stats data
+    const usageResult = await pool.query(
+      'SELECT * FROM user_usage_stats WHERE user_id = $1',
+      [userId]
+    );
+
+    let todayTimeSpent = 0;
+    let totalTimeSpent = 0;
+    let totalSessions = 0;
+    let lastOpenedAt = null;
+
+    if (usageResult.rows.length > 0) {
+      const usageData = usageResult.rows[0];
+      
+      // Check if today's time needs to be reset
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const lastOpened = new Date(usageData.last_opened_at);
+      lastOpened.setHours(0, 0, 0, 0);
+      
+      if (lastOpened.getTime() === today.getTime()) {
+        // Same day - use today's time
+        todayTimeSpent = usageData.today_time_spent || 0;
+      } else {
+        // New day - today's time is 0
+        todayTimeSpent = 0;
+      }
+      
+      totalTimeSpent = usageData.total_time_spent || 0;
+      totalSessions = usageData.total_sessions || 0;
+      lastOpenedAt = usageData.last_opened_at;
+
+      console.log('✅ Usage data found:', {
+        userId,
+        todayTimeSpent,
+        totalTimeSpent,
+        totalSessions
+      });
+    } else {
+      console.log('ℹ️ No usage stats found for user:', userId);
+    }
+
+    // Get recent milestones
+    const milestonesResult = await pool.query(
+      `SELECT milestone_days, milestone_name, achieved_at, reward_granted
+       FROM streak_milestones 
+       WHERE user_id = $1 
+       ORDER BY milestone_days DESC 
+       LIMIT 5`,
+      [userId]
+    );
+
+    const milestones = milestonesResult.rows;
+
+    // Format time for display
+    const formatTime = (seconds) => {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+      }
+      return `${minutes}m`;
+    };
+
+    console.log('✅ App session stats retrieved successfully:', {
+      userId,
+      currentStreak,
+      totalTimeSpent
+    });
+
+    // Send response
+    res.json({
+      success: true,
+      data: {
+        currentStreak: currentStreak,
+        longestStreak: longestStreak,
+        totalActiveDays: totalActiveDays,
+        lastActiveDate: lastActiveDate ? new Date(lastActiveDate).toISOString().split('T')[0] : null,
+        todayTimeSpent: todayTimeSpent,
+        todayTimeFormatted: formatTime(todayTimeSpent),
+        totalTimeSpent: totalTimeSpent,
+        totalTimeFormatted: formatTime(totalTimeSpent),
+        totalSessions: totalSessions,
+        freezesAvailable: freezesAvailable,
+        lastOpenedAt: lastOpenedAt,
+        streakMessage: streakMessage,
+        milestones: milestones
+      },
+      message: 'Session stats retrieved successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Get app session stats error:', {
+      userId: req.user.id,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve session stats',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/users/profile/usage - Track app usage statistics
+  console.log('📱 App Session Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    body: req.body,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const userId = req.user.id;
+    const {
+      timestamp,
+      durationSeconds,
+      sessionStartTime,
+      sessionEndTime,
+      timezone
+    } = req.body;
+
+    // Validate required fields
+    if (!durationSeconds || durationSeconds < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Duration in seconds is required and must be positive'
+      });
+    }
+
+    console.log('⏱️  Session details:', {
+      userId,
+      durationSeconds,
+      timestamp: timestamp || new Date().toISOString()
+    });
+
+    // Get today's date (user's timezone-aware if provided)
+    const now = timestamp ? new Date(timestamp) : new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    // Get or create user_streaks record
+    let streakResult = await pool.query(
+      'SELECT * FROM user_streaks WHERE user_id = $1',
+      [userId]
+    );
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let totalActiveDays = 0;
+    let lastActiveDate = null;
+    let isNewStreak = false;
+    let streakMessage = '';
+
+    if (streakResult.rows.length === 0) {
+      // First time user - create streak record
+      console.log('🆕 Creating new streak record for user:', userId);
+      
+      await pool.query(`
+        INSERT INTO user_streaks 
+        (user_id, current_streak, longest_streak, total_active_days, last_active_date, 
+         streak_start_date, created_at, updated_at)
+        VALUES ($1, 0, 0, 1, $2, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [userId, today]);
+
+      currentStreak = 0; // First day, no streak yet
+      longestStreak = 0;
+      totalActiveDays = 1;
+      lastActiveDate = today;
+      streakMessage = '🎉 Welcome! Start your streak tomorrow!';
+      
+    } else {
+      const streakData = streakResult.rows[0];
+      lastActiveDate = new Date(streakData.last_active_date);
+      lastActiveDate.setHours(0, 0, 0, 0);
+      
+      currentStreak = streakData.current_streak || 0;
+      longestStreak = streakData.longest_streak || 0;
+      totalActiveDays = streakData.total_active_days || 0;
+
+      console.log('📊 Current streak data:', {
+        userId,
+        currentStreak,
+        lastActiveDate: lastActiveDate.toISOString().split('T')[0],
+        today: today.toISOString().split('T')[0]
+      });
+
+      // Calculate days difference
+      const daysDifference = Math.floor((today - lastActiveDate) / (1000 * 60 * 60 * 24));
+      
+      console.log('📅 Days difference:', daysDifference);
+
+      if (daysDifference === 0) {
+        // Same day - don't change streak
+        console.log('✅ Same day visit - maintaining streak:', currentStreak);
+        streakMessage = currentStreak > 0 
+          ? `🔥 Keep going! ${currentStreak + 1} days in a row!`
+          : '👍 You\'re active today!';
+        
+      } else if (daysDifference === 1) {
+        // Consecutive day - increment streak
+        currentStreak = currentStreak + 1;
+        totalActiveDays = totalActiveDays + 1;
+        isNewStreak = true;
+        
+        console.log('🔥 Consecutive day! New streak:', currentStreak);
+        
+        // Update longest streak if current is higher
+        if (currentStreak > longestStreak) {
+          longestStreak = currentStreak;
+          console.log('🏆 New longest streak!', longestStreak);
+        }
+
+        // Generate streak message
+        streakMessage = `🔥 ${currentStreak + 1} days in a row! Keep it up!`;
+
+        // Check for milestone achievements
+        const milestones = [7, 14, 30, 50, 100, 365];
+        const achievedMilestone = milestones.find(m => currentStreak + 1 === m);
+        
+        if (achievedMilestone) {
+          const milestoneName = getMilestoneName(achievedMilestone);
+          const freezeReward = calculateFreezeReward(achievedMilestone);
+          
+          streakMessage = `🎉 ${milestoneName}! ${achievedMilestone} days streak!`;
+          
+          // Record milestone achievement
+          await pool.query(`
+            INSERT INTO streak_milestones 
+            (user_id, milestone_days, milestone_name, reward_granted, achieved_at)
+            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, milestone_days) DO NOTHING
+          `, [userId, achievedMilestone, milestoneName, freezeReward > 0]);
+          
+          // Add freeze rewards
+          if (freezeReward > 0) {
+            await pool.query(`
+              UPDATE user_streaks 
+              SET freezes_available = freezes_available + $1
+              WHERE user_id = $2
+            `, [freezeReward, userId]);
+            
+            streakMessage += ` +${freezeReward} freeze${freezeReward > 1 ? 's' : ''}!`;
+          }
+        }
+
+        // Update streak record
+        await pool.query(`
+          UPDATE user_streaks 
+          SET current_streak = $1,
+              longest_streak = $2,
+              total_active_days = $3,
+              last_active_date = $4,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $5
+        `, [currentStreak, longestStreak, totalActiveDays, today, userId]);
+        
+      } else if (daysDifference > 1) {
+        // Streak broken - reset
+        console.log('💔 Streak broken! Resetting to 0');
+        
+        currentStreak = 0; // Reset streak
+        totalActiveDays = totalActiveDays + 1;
+        isNewStreak = false;
+        streakMessage = '😔 Streak reset. Start fresh today!';
+
+        // Update streak record
+        await pool.query(`
+          UPDATE user_streaks 
+          SET current_streak = 0,
+              total_active_days = $1,
+              last_active_date = $2,
+              streak_start_date = $2,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $3
+        `, [totalActiveDays, today, userId]);
+      }
+    }
+
+    // Update user_usage_stats with session time
+    console.log('💾 Updating usage stats...');
+    
+    const usageResult = await pool.query(
+      'SELECT * FROM user_usage_stats WHERE user_id = $1',
+      [userId]
+    );
+
+    let todayTimeSpent = durationSeconds;
+    let totalTimeSpent = durationSeconds;
+    let totalSessions = 1;
+
+    if (usageResult.rows.length > 0) {
+      const usageData = usageResult.rows[0];
+      
+      // Check if we need to reset today's time (new day)
+      const lastOpened = new Date(usageData.last_opened_at);
+      lastOpened.setHours(0, 0, 0, 0);
+      
+      if (lastOpened.getTime() === today.getTime()) {
+        // Same day - add to today's time
+        todayTimeSpent = (usageData.today_time_spent || 0) + durationSeconds;
+      } else {
+        // New day - reset today's time
+        todayTimeSpent = durationSeconds;
+      }
+      
+      // Always add to total time
+      totalTimeSpent = (usageData.total_time_spent || 0) + durationSeconds;
+      totalSessions = (usageData.total_sessions || 0) + 1;
+
+      console.log('📊 Usage stats:', {
+        userId,
+        todayTimeSpent,
+        totalTimeSpent,
+        totalSessions
+      });
+
+      // Update usage stats
+      await pool.query(`
+        UPDATE user_usage_stats 
+        SET total_sessions = $1,
+            total_time_spent = $2,
+            today_time_spent = $3,
+            last_opened_at = $4,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $5
+      `, [totalSessions, totalTimeSpent, todayTimeSpent, now, userId]);
+      
+    } else {
+      // Create new usage stats record
+      console.log('🆕 Creating new usage stats for user:', userId);
+      
+      await pool.query(`
+        INSERT INTO user_usage_stats 
+        (user_id, total_sessions, total_time_spent, today_time_spent, 
+         average_session_duration, last_opened_at, recent_sessions, created_at, updated_at)
+        VALUES ($1, 1, $2, $2, $2, $3, '[]'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [userId, durationSeconds, now]);
+      
+      todayTimeSpent = durationSeconds;
+      totalTimeSpent = durationSeconds;
+      totalSessions = 1;
+    }
+
+    // Format time for display
+    const formatTime = (seconds) => {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+      }
+      return `${minutes}m`;
+    };
+
+    console.log('✅ Session tracked successfully:', {
+      userId,
+      currentStreak,
+      longestStreak,
+      totalActiveDays,
+      todayTimeSpent,
+      totalTimeSpent,
+      isNewStreak
+    });
+
+    // Send response
+    res.json({
+      success: true,
+      data: {
+        currentStreak: currentStreak,
+        longestStreak: longestStreak,
+        totalActiveDays: totalActiveDays,
+        lastActiveDate: today.toISOString().split('T')[0],
+        todayTimeSpent: todayTimeSpent,
+        todayTimeFormatted: formatTime(todayTimeSpent),
+        totalTimeSpent: totalTimeSpent,
+        totalTimeFormatted: formatTime(totalTimeSpent),
+        totalSessions: totalSessions,
+        isNewStreak: isNewStreak,
+        streakMessage: streakMessage
+      },
+      message: 'Session tracked successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ App session tracking error:', {
+      userId: req.user.id,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to track app session',
+      message: error.message
+    });
+  }
+});
+
 // POST /api/users/profile/usage - Track app usage statistics
 router.post('/profile/usage', authenticateToken, async (req, res) => {
   try {

@@ -6,9 +6,11 @@ Track user app sessions, calculate streaks based on consecutive days, and monito
 
 ---
 
-## 🎯 Endpoint
+## 🎯 Endpoints
 
-### `POST /api/users/app-session`
+### 1. Track Session (POST)
+
+**`POST /api/users/app-session`**
 
 **Authentication:** Required (JWT token)
 
@@ -16,7 +18,19 @@ Track user app sessions, calculate streaks based on consecutive days, and monito
 
 ---
 
-## 📱 Frontend Request
+### 2. Get Session Stats (GET)
+
+**`GET /api/users/app-session`**
+
+**Authentication:** Required (JWT token)
+
+**Purpose:** Retrieve current streak and session stats WITHOUT tracking a new session
+
+---
+
+## 📱 POST - Track Session
+
+### **Frontend Request:**
 
 ### **Minimum Required:**
 
@@ -70,6 +84,113 @@ Track user app sessions, calculate streaks based on consecutive days, and monito
   "message": "Session tracked successfully"
 }
 ```
+
+---
+
+## 📊 GET - Retrieve Session Stats
+
+### **Request:**
+
+```bash
+GET /api/users/app-session
+Authorization: Bearer {token}
+```
+
+**No body required** - just retrieves current data
+
+### **Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "currentStreak": 2,
+    "longestStreak": 5,
+    "totalActiveDays": 15,
+    "lastActiveDate": "2024-11-20",
+    "todayTimeSpent": 3600,
+    "todayTimeFormatted": "1h 0m",
+    "totalTimeSpent": 86400,
+    "totalTimeFormatted": "24h 0m",
+    "totalSessions": 45,
+    "freezesAvailable": 2,
+    "lastOpenedAt": "2024-11-20T08:30:00.000Z",
+    "streakMessage": "🔥 3 days in a row! Keep it up!",
+    "milestones": [
+      {
+        "milestone_days": 30,
+        "milestone_name": "Monthly Master",
+        "achieved_at": "2024-11-15T12:00:00.000Z",
+        "reward_granted": true
+      },
+      {
+        "milestone_days": 7,
+        "milestone_name": "Week Warrior",
+        "achieved_at": "2024-10-28T10:30:00.000Z",
+        "reward_granted": true
+      }
+    ]
+  },
+  "message": "Session stats retrieved successfully"
+}
+```
+
+### **Use Cases:**
+
+1. **Display streak on home screen** (without tracking new session)
+2. **Show stats in profile/settings**
+3. **Check if user has freezes available**
+4. **Load initial data when app opens**
+
+### **Example (React Native):**
+
+```javascript
+// Load stats when app opens (without tracking session yet)
+const loadUserStats = async () => {
+  try {
+    const response = await fetch(`${API_URL}/api/users/app-session`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${userToken}`
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log('🔥 Current Streak:', data.data.currentStreak + 1, 'days');
+      console.log('⏱️ Total Time:', data.data.totalTimeFormatted);
+      console.log('🏆 Milestones:', data.data.milestones);
+      
+      // Update UI
+      setStreak(data.data.currentStreak + 1);
+      setTotalTime(data.data.totalTimeFormatted);
+      setMilestones(data.data.milestones);
+    }
+  } catch (error) {
+    console.error('❌ Failed to load stats:', error);
+  }
+};
+
+// Call on app start
+useEffect(() => {
+  loadUserStats();
+}, []);
+```
+
+---
+
+## 📝 Comparison: GET vs POST
+
+| Feature | GET /api/users/app-session | POST /api/users/app-session |
+|---------|----------------------------|------------------------------|
+| **Purpose** | Retrieve stats | Track new session |
+| **Tracks Session** | No | Yes |
+| **Updates Streak** | No | Yes |
+| **Adds Time** | No | Yes |
+| **Requires Body** | No | Yes (durationSeconds) |
+| **Use Case** | Display current stats | Log app usage |
+| **When to Use** | App start, profile view | App close, background |
 
 ---
 
