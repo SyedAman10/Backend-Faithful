@@ -320,7 +320,12 @@ router.put('/email', authenticateToken, async (req, res) => {
 router.put('/preferences', authenticateToken, async (req, res) => {
   console.log('⚙️ Update User Preferences Request:', {
     userId: req.user.id,
+    email: req.user.email,
     body: req.body,
+    hasVoiceId: !!req.body.voiceId,
+    hasVoiceName: !!req.body.voiceName,
+    hasBibleVersion: !!req.body.bibleVersion,
+    hasDenomination: !!req.body.denomination,
     timestamp: new Date().toISOString()
   });
 
@@ -425,6 +430,30 @@ router.put('/preferences', authenticateToken, async (req, res) => {
       paramCount++;
     }
 
+    if (voiceId !== undefined) {
+      updateFields.push(`voice_id = $${paramCount}`);
+      updateValues.push(voiceId ? voiceId.trim() : null);
+      console.log('🎤 Voice ID update:', {
+        userId: req.user.id,
+        email: req.user.email,
+        newVoiceId: voiceId ? voiceId.trim() : null,
+        timestamp: new Date().toISOString()
+      });
+      paramCount++;
+    }
+
+    if (voiceName !== undefined) {
+      updateFields.push(`voice_name = $${paramCount}`);
+      updateValues.push(voiceName ? voiceName.trim() : null);
+      console.log('🎤 Voice Name update:', {
+        userId: req.user.id,
+        email: req.user.email,
+        newVoiceName: voiceName ? voiceName.trim() : null,
+        timestamp: new Date().toISOString()
+      });
+      paramCount++;
+    }
+
     // Always update the updated_at timestamp
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
 
@@ -468,7 +497,12 @@ router.put('/preferences', authenticateToken, async (req, res) => {
 
     console.log('✅ User preferences updated successfully:', {
       userId: req.user.id,
-      preferences: user,
+      updatedFields: updateFields,
+      voiceId: user.voice_id,
+      voiceName: user.voice_name,
+      bibleVersion: user.bible_version,
+      denomination: user.denomination,
+      ageGroup: user.age_group,
       profileCompleted: user.profile_completed,
       timestamp: new Date().toISOString()
     });
