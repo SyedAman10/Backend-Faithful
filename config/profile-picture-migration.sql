@@ -6,9 +6,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS google_picture TEXT;
 -- Add custom_picture column to store user-uploaded custom profile pictures
 ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_picture TEXT;
 
--- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_users_google_picture ON users(google_picture) WHERE google_picture IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_users_custom_picture ON users(custom_picture) WHERE custom_picture IS NOT NULL;
+-- NOTE: DO NOT create indexes on picture columns!
+-- Base64 images can exceed PostgreSQL's 8KB index limit
+-- Pictures are retrieved by user_id which is already indexed
 
 -- Add comments
 COMMENT ON COLUMN users.google_picture IS 'Original Google profile picture URL from OAuth';
