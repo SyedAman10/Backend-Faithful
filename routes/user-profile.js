@@ -40,6 +40,12 @@ function calculateXPToNextLevel(totalXP) {
 
 // XP values for different activities
 const XP_VALUES = {
+  // Generic activity types (use average/default XP value)
+  'daily_verse': 12,  // Average of read (10) and listened (15)
+  'daily_prayer': 12,  // Average of read (10) and listened (15)
+  'daily_reflection': 22,  // Average of read (20) and listened (25)
+  
+  // Specific activity types (for precise XP)
   'daily_verse_read': 10,
   'daily_verse_listened': 15,
   'daily_prayer_read': 10,
@@ -47,9 +53,12 @@ const XP_VALUES = {
   'daily_reflection_read': 20,
   'daily_reflection_listened': 25,
   'ai_chat_message': 5,
+  'ai_chat': 5,
   'community_post': 10,
   'community_comment': 5,
+  'community_engagement': 10,
   'study_group_attended': 30,
+  'study_group': 30,
   'prayer_request_created': 10,
   'prayer_response_given': 15,
   'bible_note_created': 10,
@@ -67,6 +76,12 @@ const DAILY_GOALS = [
 
 // Activity to daily goal mapping
 const ACTIVITY_TO_GOAL = {
+  // Generic activity types (for frontend convenience)
+  'daily_verse': 'daily_verse',
+  'daily_prayer': 'daily_prayer',
+  'daily_reflection': 'daily_reflection',
+  
+  // Specific activity types (for detailed tracking)
   'daily_verse_read': 'daily_verse',
   'daily_verse_listened': 'daily_verse',
   'daily_prayer_read': 'daily_prayer',
@@ -74,9 +89,12 @@ const ACTIVITY_TO_GOAL = {
   'daily_reflection_read': 'daily_reflection',
   'daily_reflection_listened': 'daily_reflection',
   'ai_chat_message': 'ai_chat',
+  'ai_chat': 'ai_chat',
   'community_post': 'community_engagement',
   'community_comment': 'community_engagement',
+  'community_engagement': 'community_engagement',
   'study_group_attended': 'study_group',
+  'study_group': 'study_group',
   'prayer_request_created': 'community_engagement',
   'prayer_response_given': 'community_engagement'
 };
@@ -361,11 +379,14 @@ router.post('/app-session', authenticateToken, async (req, res) => {
         console.log('✨ Activity processed:', {
           type: activity.type,
           xp: xp,
-          mappedGoal: goalType
+          mappedGoal: goalType,
+          goalAdded: !!goalType,
+          metadata: activity.metadata
         });
       });
       
       console.log('📊 XP earned this session:', todayXP);
+      console.log('🎯 Completed goals from activities:', Array.from(completedGoals));
     }
 
     // Get or create XP tracking record
