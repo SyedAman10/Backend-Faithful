@@ -1270,27 +1270,53 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
     });
 
     if (todayVerseResult.rows.length > 0) {
-      // User already has a verse for today - return it
+      // User already has a verse for today
       const existingVerse = todayVerseResult.rows[0];
       
-      console.log('✅ Returning existing daily verse:', {
-        userId: userId,
-        passage: existingVerse.reference,
-        verseDate: existingVerse.verse_date,
-        timestamp: new Date().toISOString()
-      });
-
-      return res.json({
-        success: true,
-        data: {
-          bible: userBible,
+      // Check if the stored text is valid (not just the reference)
+      const isValidText = existingVerse.text && 
+                         existingVerse.text.length > existingVerse.reference.length &&
+                         existingVerse.text !== existingVerse.reference;
+      
+      if (isValidText) {
+        // Return existing verse with valid text
+        console.log('✅ Returning existing daily verse:', {
+          userId: userId,
           passage: existingVerse.reference,
-          text: existingVerse.text,
-          reference: existingVerse.reference,
+          textLength: existingVerse.text.length,
           verseDate: existingVerse.verse_date,
-          isNew: false
-        }
-      });
+          timestamp: new Date().toISOString()
+        });
+
+        return res.json({
+          success: true,
+          data: {
+            bible: userBible,
+            passage: existingVerse.reference,
+            text: existingVerse.text,
+            reference: existingVerse.reference,
+            verseDate: existingVerse.verse_date,
+            isNew: false
+          }
+        });
+      } else {
+        // Invalid text stored, need to re-fetch
+        console.log('⚠️ Existing verse has invalid text, re-fetching...', {
+          userId: userId,
+          passage: existingVerse.reference,
+          storedText: existingVerse.text,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Delete the invalid entry
+        await pool.query(
+          `DELETE FROM user_verse_history 
+           WHERE user_id = $1 AND version = $2 AND reference = $3`,
+          [userId, userBible, existingVerse.reference]
+        );
+        
+        // Continue to fetch a new verse below
+      }
     }
 
     // Get verses user has already seen (to avoid repeats)
@@ -1362,26 +1388,47 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
 
     const html = bibleGatewayResponse.data;
     
-    // Extract verse text (same regex as daily-prayer)
-    const verseMatch = html.match(/<div class="passage-content.*?<p.*?>(.*?)<\/p>/s);
+    // Extract verse text (improved extraction method)
+    const verseMatch = html.match(/<div class="passage-content.*?>(.*?)<\/div>/s);
     let passageText = randomPassage;
     
     if (verseMatch && verseMatch[1]) {
-      passageText = verseMatch[1]
-        .replace(/<[^>]+>/g, '') // Remove HTML tags
+      // Extract text content
+      let extractedText = verseMatch[1]
+        .replace(/<sup[^>]*>.*?<\/sup>/gi, '') // Remove verse numbers
+        .replace(/<h\d[^>]*>.*?<\/h\d>/gi, '') // Remove headers
+        .replace(/<div class="passage-other-trans".*?<\/div>/gi, '') // Remove other translations
+        .replace(/<div class="crossrefs".*?<\/div>/gi, '') // Remove cross-references
+        .replace(/<div class="footnotes".*?<\/div>/gi, '') // Remove footnotes
+        .replace(/<[^>]+>/g, '') // Remove all remaining HTML tags
         .replace(/&nbsp;/g, ' ')
         .replace(/&quot;/g, '"')
         .replace(/&amp;/g, '&')
         .replace(/&rsquo;/g, "'")
+        .replace(/&lsquo;/g, "'")
         .replace(/&ldquo;/g, '"')
         .replace(/&rdquo;/g, '"')
+        .replace(/&#\d+;/g, '') // Remove HTML entities
         .replace(/\s+/g, ' ')
         .trim();
+      
+      // Only use extracted text if it's longer than the reference
+      if (extractedText && extractedText.length > randomPassage.length) {
+        passageText = extractedText;
+      } else {
+        console.warn('⚠️ Failed to extract verse text properly, text too short:', {
+          extractedLength: extractedText?.length,
+          referenceLength: randomPassage.length
+        });
+      }
+    } else {
+      console.warn('⚠️ No verse match found in HTML response');
     }
     
     console.log('✅ Verse text extracted:', {
       textLength: passageText.length,
       hasText: passageText.length > randomPassage.length,
+      textPreview: passageText.substring(0, 100),
       timestamp: new Date().toISOString()
     });
 
