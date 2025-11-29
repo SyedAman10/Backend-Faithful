@@ -124,8 +124,8 @@ const handleUserAuth = async (userInfo, tokens) => {
       const insertStartTime = Date.now();
       
       const insertResult = await pool.query(
-        `INSERT INTO users (google_id, email, name, picture, google_access_token, google_refresh_token) 
-         VALUES ($1, $2, $3, $4, $5, $6) 
+        `INSERT INTO users (google_id, email, name, picture, google_picture, google_access_token, google_refresh_token) 
+         VALUES ($1, $2, $3, $4, $4, $5, $6) 
          RETURNING *`,
         [googleId, email, name, picture, tokens.access_token, tokens.refresh_token]
       );
@@ -147,7 +147,7 @@ const handleUserAuth = async (userInfo, tokens) => {
     
     const updateResult = await pool.query(
       `UPDATE users 
-       SET email = $1, name = $2, picture = $3, google_access_token = $4, google_refresh_token = $5, updated_at = CURRENT_TIMESTAMP 
+       SET email = $1, name = $2, picture = $3, google_picture = $3, google_access_token = $4, google_refresh_token = $5, updated_at = CURRENT_TIMESTAMP 
        WHERE google_id = $6 
        RETURNING *`,
       [email, name, picture, tokens.access_token, tokens.refresh_token, googleId]
@@ -593,8 +593,8 @@ router.post('/google', async (req, res) => {
     if (result.rows.length === 0) {
       // Create new user
       const insertResult = await pool.query(
-        `INSERT INTO users (google_id, email, name, picture, google_access_token) 
-         VALUES ($1, $2, $3, $4, $5) 
+        `INSERT INTO users (google_id, email, name, picture, google_picture, google_access_token) 
+         VALUES ($1, $2, $3, $4, $4, $5) 
          RETURNING *`,
         [googleId, email, name, picture, accessToken]
       );
@@ -604,7 +604,7 @@ router.post('/google', async (req, res) => {
       // Update existing user (including email in case it changed)
       const updateResult = await pool.query(
         `UPDATE users 
-         SET email = $1, name = $2, picture = $3, google_access_token = $4, updated_at = CURRENT_TIMESTAMP 
+         SET email = $1, name = $2, picture = $3, google_picture = $3, google_access_token = $4, updated_at = CURRENT_TIMESTAMP 
          WHERE google_id = $5 
          RETURNING *`,
         [email, name, picture, accessToken, googleId]

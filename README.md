@@ -6,11 +6,15 @@ Backend API for the Faithful app - A Bible study and community platform.
 
 - User Authentication (Email/Password and Google OAuth)
 - **Google Calendar Integration** (Separate from sign-up)
+- **Profile Picture Management** (NEW) - Google pictures and custom uploads
 - Bible API with multiple translations
+- **Daily Verse System** (NEW) - Unique inspirational verses daily
 - Daily Prayer Requests
+- **Voice Preferences** (NEW) - TTS voice settings
 - Study Groups Management
 - Video Conferencing (LiveKit)
-- User Engagement Tracking
+- **XP & Gamification** (NEW) - Experience points, levels, and daily goals
+- User Engagement Tracking & Streaks
 - Usage Analytics
 
 ## Quick Start
@@ -48,6 +52,18 @@ node scripts/run-engagement-migration.js
 
 # Google Calendar connection setup
 node scripts/run-calendar-migration.js
+
+# Daily Verse tracking setup
+# (Table created automatically in database.js)
+
+# Voice preferences setup
+node scripts/run-voice-preferences-migration.js
+
+# XP and Gamification setup (NEW)
+node scripts/run-xp-goals-migration.js
+
+# Profile Picture system setup (NEW)
+node scripts/run-profile-picture-migration.js
 ```
 
 ### Start the Server
@@ -90,9 +106,12 @@ The server will run on port 3000 by default.
 - **Bible API**: See [BIBLE_API_LOGGING.md](./BIBLE_API_LOGGING.md)
 - **Daily Verse** (NEW): See [DAILY_VERSE_API.md](./DAILY_VERSE_API.md) - Separate from daily prayer
 - **Voice Preferences** (NEW): See [VOICE_PREFERENCES_API.md](./VOICE_PREFERENCES_API.md) - TTS voice settings
+- **Profile Pictures** (NEW): See [PROFILE_PICTURE_API.md](./PROFILE_PICTURE_API.md) - Google and custom uploads
+- **XP & Gamification** (NEW): See [XP_GAMIFICATION_API.md](./XP_GAMIFICATION_API.md) - Experience points and leveling
 - **Prayer Requests**: See [DAILY_PRAYER_API_GUIDE.md](./DAILY_PRAYER_API_GUIDE.md)
 - **Study Groups**: See [STUDY_GROUPS_API.md](./STUDY_GROUPS_API.md)
 - **User Engagement**: See [USER_ENGAGEMENT_API.md](./USER_ENGAGEMENT_API.md)
+- **App Session Tracking**: See [APP_SESSION_STREAK_API.md](./APP_SESSION_STREAK_API.md)
 - **LiveKit Integration**: See [LIVEKIT_INTEGRATION.md](./LIVEKIT_INTEGRATION.md)
 
 #### Daily Bible Content Endpoints
@@ -135,6 +154,13 @@ Main tables:
 - `study_groups` - Bible study groups
 - `user_engagement` - User activity tracking
 - `join_requests` - Study group membership requests
+- `user_streaks` - Streak tracking
+- `user_usage_stats` - Usage analytics
+- `streak_milestones` - Milestone achievements
+- `user_verse_history` - Daily verse history (NEW)
+- `user_xp` - XP and levels (NEW)
+- `user_daily_goals` - Daily goals tracking (NEW)
+- `user_activities_log` - Activity history (NEW)
 
 ### Google Calendar Columns in Users Table
 
@@ -179,6 +205,11 @@ See `env-template.txt` for all required environment variables.
 
 For detailed API documentation, see the individual markdown files:
 - [GOOGLE_CALENDAR_AUTH.md](./GOOGLE_CALENDAR_AUTH.md) - **New calendar authentication**
+- [PROFILE_PICTURE_API.md](./PROFILE_PICTURE_API.md) - **Profile picture management**
+- [XP_GAMIFICATION_API.md](./XP_GAMIFICATION_API.md) - **XP & Gamification system**
+- [DAILY_VERSE_API.md](./DAILY_VERSE_API.md) - **Daily verse endpoint**
+- [VOICE_PREFERENCES_API.md](./VOICE_PREFERENCES_API.md) - **Voice preferences**
+- [APP_SESSION_STREAK_API.md](./APP_SESSION_STREAK_API.md) - **Session & streak tracking**
 - [ENGAGEMENT_SETUP_GUIDE.md](./ENGAGEMENT_SETUP_GUIDE.md)
 - [STUDY_GROUPS_API.md](./STUDY_GROUPS_API.md)
 - [BIBLE_API_LOGGING.md](./BIBLE_API_LOGGING.md)

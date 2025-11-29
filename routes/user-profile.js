@@ -25,6 +25,63 @@ function calculateFreezeReward(days) {
   return 0;
 }
 
+// Helper function to calculate level from XP
+function calculateLevel(totalXP) {
+  // Level formula: Level increases every 100 XP
+  return Math.floor(totalXP / 100) + 1;
+}
+
+// Helper function to calculate XP needed for next level
+function calculateXPToNextLevel(totalXP) {
+  const currentLevel = calculateLevel(totalXP);
+  const nextLevelThreshold = currentLevel * 100;
+  return nextLevelThreshold - totalXP;
+}
+
+// XP values for different activities
+const XP_VALUES = {
+  'daily_verse_read': 10,
+  'daily_verse_listened': 15,
+  'daily_prayer_read': 10,
+  'daily_prayer_listened': 15,
+  'daily_reflection_read': 20,
+  'daily_reflection_listened': 25,
+  'ai_chat_message': 5,
+  'community_post': 10,
+  'community_comment': 5,
+  'study_group_attended': 30,
+  'prayer_request_created': 10,
+  'prayer_response_given': 15,
+  'bible_note_created': 10,
+  'verse_shared': 5
+};
+
+// Daily goals types
+const DAILY_GOALS = [
+  'daily_verse',
+  'daily_prayer',
+  'daily_reflection',
+  'ai_chat',
+  'community_engagement'
+];
+
+// Activity to daily goal mapping
+const ACTIVITY_TO_GOAL = {
+  'daily_verse_read': 'daily_verse',
+  'daily_verse_listened': 'daily_verse',
+  'daily_prayer_read': 'daily_prayer',
+  'daily_prayer_listened': 'daily_prayer',
+  'daily_reflection_read': 'daily_reflection',
+  'daily_reflection_listened': 'daily_reflection',
+  'ai_chat_message': 'ai_chat',
+  'community_post': 'community_engagement',
+  'community_comment': 'community_engagement',
+  'study_group_attended': 'study_group',
+  'prayer_request_created': 'community_engagement',
+  'prayer_response_given': 'community_engagement'
+};
+
+
 // POST /api/users/app-session - Track app session and update streak
 router.post('/app-session', authenticateToken, async (req, res) => {
   console.log('📱 App Session Request:', {
@@ -41,7 +98,8 @@ router.post('/app-session', authenticateToken, async (req, res) => {
       durationSeconds,
       sessionStartTime,
       sessionEndTime,
-      timezone
+      timezone,
+      activities = [] // Array of activities completed during session
     } = req.body;
 
     // Validate required fields
@@ -55,6 +113,7 @@ router.post('/app-session', authenticateToken, async (req, res) => {
     console.log('⏱️  Session details:', {
       userId,
       durationSeconds,
+      activitiesCount: activities.length,
       timestamp: timestamp || new Date().toISOString()
     });
 
@@ -276,6 +335,136 @@ router.post('/app-session', authenticateToken, async (req, res) => {
       return `${minutes}m`;
     };
 
+    // Process activities and calculate XP
+    let todayXP = 0;
+    let totalXP = 0;
+    const completedGoals = new Set();
+    
+    if (activities && activities.length > 0) {
+      console.log('🎯 Processing activities:', {
+        userId,
+        activityCount: activities.length,
+        activities: activities.map(a => a.type)
+      });
+      
+      // Calculate XP from activities
+      activities.forEach(activity => {
+        const xp = activity.xpEarned || XP_VALUES[activity.type] || 0;
+        todayXP += xp;
+        
+        // Map activity to daily goal
+        const goalType = ACTIVITY_TO_GOAL[activity.type];
+        if (goalType) {
+          completedGoals.add(goalType);
+        }
+        
+        console.log('✨ Activity processed:', {
+          type: activity.type,
+          xp: xp,
+          mappedGoal: goalType
+        });
+      });
+      
+      console.log('📊 XP earned this session:', todayXP);
+    }
+
+    // Get or create XP tracking record
+    let xpResult = await pool.query(
+      'SELECT * FROM user_xp WHERE user_id = $1',
+      [userId]
+    );
+    
+    if (xpResult.rows.length === 0) {
+      // Create XP record
+      console.log('🆕 Creating XP record for user:', userId);
+      await pool.query(`
+        INSERT INTO user_xp 
+        (user_id, total_xp, today_xp, last_xp_date, created_at, updated_at)
+        VALUES ($1, $2, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [userId, todayXP, today]);
+      
+      totalXP = todayXP;
+    } else {
+      const xpData = xpResult.rows[0];
+      const lastXPDate = new Date(xpData.last_xp_date);
+      lastXPDate.setHours(0, 0, 0, 0);
+      
+      if (lastXPDate.getTime() === today.getTime()) {
+        // Same day - add to today's XP
+        todayXP = (xpData.today_xp || 0) + todayXP;
+      }
+      // else: new day, keep todayXP as is
+      
+      totalXP = (xpData.total_xp || 0) + todayXP;
+      
+      await pool.query(`
+        UPDATE user_xp 
+        SET total_xp = $1,
+            today_xp = $2,
+            last_xp_date = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $4
+      `, [totalXP, todayXP, today, userId]);
+    }
+    
+    // Calculate level and XP to next level
+    const level = calculateLevel(totalXP);
+    const xpToNextLevel = calculateXPToNextLevel(totalXP);
+    
+    console.log('⭐ XP Stats:', {
+      userId,
+      totalXP,
+      todayXP,
+      level,
+      xpToNextLevel
+    });
+
+    // Update daily goals
+    let dailyGoalsData = await pool.query(
+      'SELECT * FROM user_daily_goals WHERE user_id = $1 AND goal_date = $2',
+      [userId, today]
+    );
+    
+    const goalsStatus = {};
+    DAILY_GOALS.forEach(goal => {
+      goalsStatus[goal] = completedGoals.has(goal);
+    });
+    
+    if (dailyGoalsData.rows.length === 0) {
+      // Create today's goals record
+      await pool.query(`
+        INSERT INTO user_daily_goals 
+        (user_id, goal_date, goals_completed, total_goals, created_at)
+        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+      `, [userId, today, JSON.stringify(goalsStatus), DAILY_GOALS.length]);
+    } else {
+      // Update existing goals
+      const existingGoals = dailyGoalsData.rows[0].goals_completed || {};
+      const mergedGoals = { ...existingGoals, ...goalsStatus };
+      
+      await pool.query(`
+        UPDATE user_daily_goals 
+        SET goals_completed = $1
+        WHERE user_id = $2 AND goal_date = $3
+      `, [JSON.stringify(mergedGoals), userId, today]);
+      
+      Object.assign(goalsStatus, mergedGoals);
+    }
+    
+    // Calculate daily goals progress
+    const completedCount = Object.values(goalsStatus).filter(v => v === true).length;
+    const progressPercentage = Math.floor((completedCount / DAILY_GOALS.length) * 100);
+    
+    const dailyGoalsResponse = {
+      totalGoals: DAILY_GOALS.length,
+      completedGoals: completedCount,
+      progressPercentage: progressPercentage,
+      goals: DAILY_GOALS.map(goalType => ({
+        type: goalType,
+        completed: goalsStatus[goalType] || false
+      }))
+    };
+
     console.log('✅ Session tracked successfully:', {
       userId,
       currentStreak,
@@ -283,6 +472,8 @@ router.post('/app-session', authenticateToken, async (req, res) => {
       totalActiveDays,
       todayTimeSpent,
       totalTimeSpent,
+      totalXP,
+      level,
       isNewStreak
     });
 
@@ -300,7 +491,13 @@ router.post('/app-session', authenticateToken, async (req, res) => {
         totalTimeFormatted: formatTime(totalTimeSpent),
         totalSessions: totalSessions,
         isNewStreak: isNewStreak,
-        streakMessage: streakMessage
+        streakMessage: streakMessage,
+        // XP & Gamification
+        totalXP: totalXP,
+        todayXP: todayXP,
+        level: level,
+        xpToNextLevel: xpToNextLevel,
+        dailyGoals: dailyGoalsResponse
       },
       message: 'Session tracked successfully'
     });
@@ -426,6 +623,59 @@ router.get('/app-session', authenticateToken, async (req, res) => {
     );
 
     const milestones = milestonesResult.rows;
+    
+    // Get XP data
+    const xpResult = await pool.query(
+      'SELECT * FROM user_xp WHERE user_id = $1',
+      [userId]
+    );
+    
+    // Get today's daily goals
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const goalsResult = await pool.query(
+      'SELECT * FROM user_daily_goals WHERE user_id = $1 AND goal_date = $2',
+      [userId, today]
+    );
+    
+    const xp = xpResult.rows[0] || {
+      total_xp: 0,
+      today_xp: 0,
+      last_xp_date: null
+    };
+    
+    const todayGoals = goalsResult.rows[0] || {
+      goals_completed: {},
+      total_goals: 5
+    };
+    
+    // Calculate level and XP to next level
+    const level = calculateLevel(xp.total_xp);
+    const xpToNextLevel = calculateXPToNextLevel(xp.total_xp);
+    
+    // Build daily goals response
+    const DAILY_GOALS = [
+      'daily_verse',
+      'daily_prayer',
+      'daily_reflection',
+      'ai_chat',
+      'community_engagement'
+    ];
+    
+    const goalsCompleted = todayGoals.goals_completed || {};
+    const completedCount = Object.values(goalsCompleted).filter(v => v === true).length;
+    const progressPercentage = Math.floor((completedCount / DAILY_GOALS.length) * 100);
+    
+    const dailyGoalsResponse = {
+      totalGoals: DAILY_GOALS.length,
+      completedGoals: completedCount,
+      progressPercentage: progressPercentage,
+      goals: DAILY_GOALS.map(goalType => ({
+        type: goalType,
+        completed: goalsCompleted[goalType] || false
+      }))
+    };
 
     // Format time for display
     const formatTime = (seconds) => {
@@ -440,7 +690,10 @@ router.get('/app-session', authenticateToken, async (req, res) => {
     console.log('✅ App session stats retrieved successfully:', {
       userId,
       currentStreak,
-      totalTimeSpent
+      totalTimeSpent,
+      totalXP: xp.total_xp,
+      level: level,
+      completedGoals: completedCount
     });
 
     // Send response
@@ -459,7 +712,13 @@ router.get('/app-session', authenticateToken, async (req, res) => {
         freezesAvailable: freezesAvailable,
         lastOpenedAt: lastOpenedAt,
         streakMessage: streakMessage,
-        milestones: milestones
+        milestones: milestones,
+        // XP & Gamification
+        totalXP: xp.total_xp,
+        todayXP: xp.today_xp,
+        level: level,
+        xpToNextLevel: xpToNextLevel,
+        dailyGoals: dailyGoalsResponse
       },
       message: 'Session stats retrieved successfully'
     });

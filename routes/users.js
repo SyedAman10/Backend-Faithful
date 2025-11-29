@@ -30,7 +30,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, email, name, picture, google_meet_access, denomination, bible_version, age_group, 
+      `SELECT id, email, name, picture, google_picture, custom_picture, 
+              google_meet_access, denomination, bible_version, age_group, 
               referral_source, bible_answers, bible_specific, voice_id, voice_name, 
               profile_completed, created_at, updated_at 
        FROM users WHERE id = $1`,
@@ -44,14 +45,26 @@ router.get('/profile', authenticateToken, async (req, res) => {
       });
     }
 
+    const user = result.rows[0];
+    
+    // Determine which picture to use (custom takes priority, then Google)
+    const profilePicture = user.custom_picture || user.google_picture || user.picture;
+
     console.log('✅ User profile retrieved successfully:', {
       userId: req.user.id,
+      hasCustomPicture: !!user.custom_picture,
+      hasGooglePicture: !!user.google_picture,
       timestamp: new Date().toISOString()
     });
 
     res.json({
       success: true,
-      user: result.rows[0]
+      user: {
+        ...user,
+        picture: profilePicture,
+        hasCustomPicture: !!user.custom_picture,
+        hasGooglePicture: !!user.google_picture
+      }
     });
   } catch (error) {
     console.error('❌ Get profile error:', error);
@@ -75,6 +88,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
     const { 
       name, 
       picture, 
+      customPicture, // NEW: Custom uploaded picture (base64 or URL)
       denomination, 
       bibleVersion, 
       ageGroup, 
@@ -99,6 +113,38 @@ router.put('/profile', authenticateToken, async (req, res) => {
         return res.status(400).json({ 
           success: false,
           error: 'Picture must be a valid URL' 
+        });
+      }
+    }
+    
+    // Validate custom picture (base64 or URL)
+    if (customPicture && customPicture.trim().length > 0) {
+      // Check if it's base64 or URL
+      if (!customPicture.startsWith('data:image/') && !customPicture.startsWith('http')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Custom picture must be a valid base64 image or URL'
+        });
+      }
+      
+      // Limit base64 image size to 5MB
+      if (customPicture.startsWith('data:image/')) {
+        const base64Length = customPicture.length - (customPicture.indexOf(',') + 1);
+        const sizeInBytes = (base64Length * 3) / 4;
+        const sizeInMB = sizeInBytes / (1024 * 1024);
+        
+        if (sizeInMB > 5) {
+          return res.status(400).json({
+            success: false,
+            error: 'Image size must be less than 5MB'
+          });
+        }
+        
+        console.log('📸 Custom picture upload:', {
+          userId: req.user.id,
+          isBase64: true,
+          sizeInMB: sizeInMB.toFixed(2),
+          timestamp: new Date().toISOString()
         });
       }
     }
@@ -150,6 +196,19 @@ router.put('/profile', authenticateToken, async (req, res) => {
       updateFields.push(`picture = $${paramCount}`);
       updateValues.push(picture ? picture.trim() : null);
       paramCount++;
+    }
+    
+    if (customPicture !== undefined) {
+      updateFields.push(`custom_picture = $${paramCount}`);
+      updateValues.push(customPicture ? customPicture : null);
+      paramCount++;
+      
+      console.log('🖼️ Updating custom picture:', {
+        userId: req.user.id,
+        hasCustomPicture: !!customPicture,
+        isBase64: customPicture?.startsWith('data:image/'),
+        timestamp: new Date().toISOString()
+      });
     }
 
     if (denomination !== undefined) {
@@ -785,6 +844,189 @@ router.delete('/account', authenticateToken, async (req, res) => {
       success: false,
       error: 'Failed to delete account',
       message: error.message 
+    });
+  }
+});
+
+// POST /api/users/profile/picture - Upload or update profile picture
+router.post('/profile/picture', authenticateToken, async (req, res) => {
+  console.log('📸 Upload Profile Picture Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { picture, useGooglePicture } = req.body;
+
+    // If user wants to revert to Google picture
+    if (useGooglePicture === true) {
+      console.log('🔄 Reverting to Google picture:', {
+        userId: req.user.id
+      });
+
+      await pool.query(
+        `UPDATE users 
+         SET custom_picture = NULL, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $1`,
+        [req.user.id]
+      );
+
+      // Get the Google picture
+      const result = await pool.query(
+        'SELECT google_picture, picture FROM users WHERE id = $1',
+        [req.user.id]
+      );
+
+      const googlePicture = result.rows[0]?.google_picture || result.rows[0]?.picture;
+
+      console.log('✅ Reverted to Google picture successfully');
+
+      return res.json({
+        success: true,
+        message: 'Reverted to Google profile picture',
+        picture: googlePicture
+      });
+    }
+
+    // Validate that picture is provided
+    if (!picture || picture.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Picture data is required'
+      });
+    }
+
+    // Validate picture format (base64 or URL)
+    if (!picture.startsWith('data:image/') && !picture.startsWith('http')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Picture must be a valid base64 image or URL'
+      });
+    }
+
+    // Validate base64 image size (max 5MB)
+    if (picture.startsWith('data:image/')) {
+      const base64Length = picture.length - (picture.indexOf(',') + 1);
+      const sizeInBytes = (base64Length * 3) / 4;
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+
+      if (sizeInMB > 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'Image size must be less than 5MB',
+          actualSize: `${sizeInMB.toFixed(2)}MB`
+        });
+      }
+
+      console.log('📊 Image size:', {
+        userId: req.user.id,
+        sizeInMB: sizeInMB.toFixed(2),
+        format: picture.substring(11, picture.indexOf(';'))
+      });
+    }
+
+    // Update custom picture in database
+    const result = await pool.query(
+      `UPDATE users 
+       SET custom_picture = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $2 
+       RETURNING id, email, name, custom_picture, google_picture, picture`,
+      [picture, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const user = result.rows[0];
+
+    console.log('✅ Profile picture uploaded successfully:', {
+      userId: user.id,
+      hasCustomPicture: !!user.custom_picture,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Profile picture updated successfully',
+      picture: user.custom_picture,
+      hasCustomPicture: true,
+      hasGooglePicture: !!user.google_picture
+    });
+
+  } catch (error) {
+    console.error('❌ Upload profile picture error:', {
+      userId: req.user.id,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to upload profile picture',
+      message: error.message
+    });
+  }
+});
+
+// DELETE /api/users/profile/picture - Remove custom profile picture
+router.delete('/profile/picture', authenticateToken, async (req, res) => {
+  console.log('🗑️ Delete Custom Profile Picture Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const result = await pool.query(
+      `UPDATE users 
+       SET custom_picture = NULL, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $1 
+       RETURNING id, google_picture, picture`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const user = result.rows[0];
+    const fallbackPicture = user.google_picture || user.picture;
+
+    console.log('✅ Custom profile picture deleted:', {
+      userId: user.id,
+      hasGooglePicture: !!user.google_picture,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Custom profile picture removed',
+      picture: fallbackPicture,
+      hasCustomPicture: false,
+      hasGooglePicture: !!user.google_picture
+    });
+
+  } catch (error) {
+    console.error('❌ Delete profile picture error:', {
+      userId: req.user.id,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete profile picture',
+      message: error.message
     });
   }
 });
