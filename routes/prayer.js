@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { sendPrayerResponseNotification } = require('../utils/pushNotifications');
 
 const router = express.Router();
 
@@ -988,6 +989,82 @@ router.post('/responses/:responseId/reply', authenticateToken, async (req, res) 
     );
 
     console.log('✅ Prayer count updated for request:', parentResponse.prayer_request_id);
+
+    // Send push notification to prayer request author if they have notifications enabled
+    try {
+      // Get prayer request author's push token and notification settings
+      const authorResult = await pool.query(
+        `SELECT pr.user_id, u.push_token, u.notification_settings, u.name as author_name
+         FROM prayer_requests pr
+         INNER JOIN users u ON pr.user_id = u.id
+         WHERE pr.id = $1`,
+        [parentResponse.prayer_request_id]
+      );
+
+      if (authorResult.rows.length > 0) {
+        const author = authorResult.rows[0];
+        const notificationSettings = author.notification_settings || {};
+
+        console.log('📱 Checking if notification should be sent:', {
+          authorId: author.user_id,
+          hasPushToken: !!author.push_token,
+          pushEnabled: notificationSettings.pushEnabled,
+          prayerUpdates: notificationSettings.prayerUpdates,
+          isNotAuthor: author.user_id !== req.user.id
+        });
+
+        // Only send notification if:
+        // 1. Author has a push token
+        // 2. Push notifications are enabled
+        // 3. Prayer updates are enabled
+        // 4. The responder is not the author themselves
+        if (author.push_token && 
+            notificationSettings.pushEnabled !== false && 
+            notificationSettings.prayerUpdates !== false &&
+            author.user_id !== req.user.id) {
+          
+          // Get responder's name if not anonymous
+          let responderName = null;
+          if (!isAnonymous) {
+            const responderResult = await pool.query(
+              'SELECT name FROM users WHERE id = $1',
+              [req.user.id]
+            );
+            responderName = responderResult.rows[0]?.name;
+          }
+
+          console.log('📤 Sending prayer response notification:', {
+            authorId: author.user_id,
+            responderId: req.user.id,
+            responderName: responderName,
+            isAnonymous: isAnonymous
+          });
+
+          // Send the push notification (don't await - fire and forget)
+          sendPrayerResponseNotification(author.push_token, {
+            responderName: responderName,
+            isAnonymous: isAnonymous,
+            prayerRequestId: parentResponse.prayer_request_id,
+            responseId: result.rows[0].id
+          }).catch(notifError => {
+            console.error('❌ Failed to send push notification:', notifError);
+          });
+        } else {
+          console.log('⏭️ Skipping notification:', {
+            reason: !author.push_token ? 'No push token' : 
+                    notificationSettings.pushEnabled === false ? 'Push disabled' :
+                    notificationSettings.prayerUpdates === false ? 'Prayer updates disabled' :
+                    author.user_id === req.user.id ? 'Self-response' : 'Unknown'
+          });
+        }
+      }
+    } catch (notifError) {
+      // Log notification error but don't fail the request
+      console.error('❌ Error sending notification:', {
+        error: notifError.message,
+        stack: notifError.stack
+      });
+    }
 
     console.log('✅ Reply to prayer response added successfully:', {
       userId: req.user.id,

@@ -30,6 +30,12 @@ MOBILE_CALENDAR_RETURN_URL=faithfulcompanion://google-calendar-callback
 # Development alternative:
 # MOBILE_CALENDAR_RETURN_URL=exp://127.0.0.1:8081/--/calendar/callback
 
+# Push Notifications (Optional)
+# Note: Expo Push Notifications don't require API keys
+# Push tokens are collected from the mobile app and stored in the database
+# Set this to your timezone for cron jobs (e.g., 'America/New_York', 'UTC')
+TZ=UTC
+
 # CORS Configuration
 ALLOWED_ORIGINS=http://localhost:19000,http://localhost:19001,http://localhost:19002,https://1befd1562ae3.ngrok-free.app
 

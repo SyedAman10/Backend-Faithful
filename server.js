@@ -239,6 +239,7 @@ const livekitRoutes = require('./routes/livekit');
 const userProfileRoutes = require('./routes/user-profile');
 const { initializeDatabase } = require('./config/database');
 const { startEngagementCronJobs } = require('./utils/engagementCronJobs');
+const { startJourneyReminderCron } = require('./utils/journeyReminderCron');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -282,6 +283,10 @@ initializeDatabase();
 
 // Start engagement tracking cron jobs
 startEngagementCronJobs();
+
+// Start journey reminder cron jobs for push notifications
+console.log('🔔 Initializing journey reminder notifications...');
+startJourneyReminderCron();
 
 // Routes
 app.use('/api/auth', authRoutes);

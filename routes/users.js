@@ -397,7 +397,9 @@ router.put('/preferences', authenticateToken, async (req, res) => {
       bibleAnswers, 
       bibleSpecific,
       voiceId,
-      voiceName
+      voiceName,
+      pushToken,
+      notificationSettings
     } = req.body;
 
     // Validate denomination length
@@ -446,6 +448,53 @@ router.put('/preferences', authenticateToken, async (req, res) => {
         success: false,
         error: 'Voice name must be 100 characters or less' 
       });
+    }
+
+    // Validate push token format (must be Expo push token)
+    if (pushToken !== undefined && pushToken !== null && pushToken.trim().length > 0) {
+      if (!pushToken.startsWith('ExponentPushToken[')) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid push token format. Must be an Expo push token.' 
+        });
+      }
+      
+      if (pushToken.length > 255) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Push token must be 255 characters or less' 
+        });
+      }
+    }
+
+    // Validate notification settings structure
+    if (notificationSettings !== undefined) {
+      if (typeof notificationSettings !== 'object') {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Notification settings must be an object' 
+        });
+      }
+      
+      // Validate boolean fields if provided
+      const validKeys = ['pushEnabled', 'journeyReminders', 'prayerUpdates'];
+      const providedKeys = Object.keys(notificationSettings);
+      
+      for (const key of providedKeys) {
+        if (!validKeys.includes(key)) {
+          return res.status(400).json({ 
+            success: false,
+            error: `Invalid notification setting: ${key}. Valid keys are: ${validKeys.join(', ')}` 
+          });
+        }
+        
+        if (typeof notificationSettings[key] !== 'boolean') {
+          return res.status(400).json({ 
+            success: false,
+            error: `Notification setting '${key}' must be a boolean value` 
+          });
+        }
+      }
     }
 
     // Build dynamic UPDATE query based on provided fields
@@ -513,6 +562,31 @@ router.put('/preferences', authenticateToken, async (req, res) => {
       paramCount++;
     }
 
+    if (pushToken !== undefined) {
+      updateFields.push(`push_token = $${paramCount}`);
+      updateValues.push(pushToken && pushToken.trim().length > 0 ? pushToken.trim() : null);
+      console.log('📱 Push Token update:', {
+        userId: req.user.id,
+        email: req.user.email,
+        hasPushToken: !!(pushToken && pushToken.trim().length > 0),
+        tokenPreview: pushToken ? pushToken.substring(0, 30) + '...' : null,
+        timestamp: new Date().toISOString()
+      });
+      paramCount++;
+    }
+
+    if (notificationSettings !== undefined) {
+      updateFields.push(`notification_settings = $${paramCount}`);
+      updateValues.push(notificationSettings ? JSON.stringify(notificationSettings) : null);
+      console.log('🔔 Notification Settings update:', {
+        userId: req.user.id,
+        email: req.user.email,
+        settings: notificationSettings,
+        timestamp: new Date().toISOString()
+      });
+      paramCount++;
+    }
+
     // Always update the updated_at timestamp
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
 
@@ -531,7 +605,7 @@ router.put('/preferences', authenticateToken, async (req, res) => {
        WHERE id = $${paramCount} 
        RETURNING id, email, name, denomination, bible_version, age_group, 
                  referral_source, bible_answers, bible_specific, voice_id, voice_name, 
-                 profile_completed, updated_at`,
+                 push_token, notification_settings, profile_completed, updated_at`,
       updateValues
     );
 
@@ -562,6 +636,8 @@ router.put('/preferences', authenticateToken, async (req, res) => {
       bibleVersion: user.bible_version,
       denomination: user.denomination,
       ageGroup: user.age_group,
+      hasPushToken: !!user.push_token,
+      notificationSettings: user.notification_settings,
       profileCompleted: user.profile_completed,
       timestamp: new Date().toISOString()
     });
