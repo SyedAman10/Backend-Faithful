@@ -70,7 +70,7 @@ router.get('/requests', authenticateToken, async (req, res) => {
          u.id as author_id,
          u.name as author_name,
          u.email as author_email,
-         u.picture as author_picture,
+         COALESCE(u.custom_picture, u.google_picture, u.picture) as author_picture,
          u.denomination as author_denomination,
          u.bible_version as author_bible_version,
          u.age_group as author_age_group,
@@ -80,7 +80,7 @@ router.get('/requests', authenticateToken, async (req, res) => {
          END as display_name,
          CASE 
            WHEN pr.is_anonymous = true THEN NULL
-           ELSE u.picture 
+           ELSE COALESCE(u.custom_picture, u.google_picture, u.picture)
          END as display_picture,
          CASE 
            WHEN pr.is_anonymous = true THEN NULL
@@ -168,7 +168,7 @@ router.get('/requests/:id', authenticateToken, async (req, res) => {
          u.id as author_id,
          u.name as author_name,
          u.email as author_email,
-         u.picture as author_picture,
+         COALESCE(u.custom_picture, u.google_picture, u.picture) as author_picture,
          u.denomination as author_denomination,
          u.bible_version as author_bible_version,
          u.age_group as author_age_group,
@@ -178,7 +178,7 @@ router.get('/requests/:id', authenticateToken, async (req, res) => {
          END as display_name,
          CASE 
            WHEN pr.is_anonymous = true THEN NULL
-           ELSE u.picture 
+           ELSE COALESCE(u.custom_picture, u.google_picture, u.picture)
          END as display_picture,
          CASE 
            WHEN pr.is_anonymous = true THEN NULL
@@ -208,7 +208,7 @@ router.get('/requests/:id', authenticateToken, async (req, res) => {
          u.id as responder_id,
          u.name as responder_name,
          u.email as responder_email,
-         u.picture as responder_picture,
+         COALESCE(u.custom_picture, u.google_picture, u.picture) as responder_picture,
          u.denomination as responder_denomination,
          u.bible_version as responder_bible_version,
          u.age_group as responder_age_group,
@@ -218,7 +218,7 @@ router.get('/requests/:id', authenticateToken, async (req, res) => {
          END as display_name,
          CASE 
            WHEN pr.is_anonymous = true THEN NULL
-           ELSE u.picture 
+           ELSE COALESCE(u.custom_picture, u.google_picture, u.picture)
          END as display_picture,
          CASE 
            WHEN pr.is_anonymous = true THEN NULL

@@ -103,10 +103,10 @@ const handleUserAuth = async (userInfo, tokens) => {
       
       const updateResult = await pool.query(
         `UPDATE users 
-         SET google_id = $1, name = $2, picture = $3, google_access_token = $4, google_refresh_token = $5, updated_at = CURRENT_TIMESTAMP 
-         WHERE email = $6 
+         SET google_id = $1, name = $2, picture = $3, google_picture = $4, google_access_token = $5, google_refresh_token = $6, updated_at = CURRENT_TIMESTAMP 
+         WHERE email = $7 
          RETURNING *`,
-        [googleId, name, picture, tokens.access_token, tokens.refresh_token, email]
+        [googleId, name, picture, picture, tokens.access_token || null, tokens.refresh_token || null, email]
       );
       
       const linkTime = Date.now() - linkStartTime;
@@ -125,9 +125,9 @@ const handleUserAuth = async (userInfo, tokens) => {
       
       const insertResult = await pool.query(
         `INSERT INTO users (google_id, email, name, picture, google_picture, google_access_token, google_refresh_token) 
-         VALUES ($1, $2, $3, $4, $4, $5, $6) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
          RETURNING *`,
-        [googleId, email, name, picture, tokens.access_token, tokens.refresh_token]
+        [googleId, email, name, picture, picture, tokens.access_token || null, tokens.refresh_token || null]
       );
       
       const insertTime = Date.now() - insertStartTime;
@@ -147,10 +147,10 @@ const handleUserAuth = async (userInfo, tokens) => {
     
     const updateResult = await pool.query(
       `UPDATE users 
-       SET email = $1, name = $2, picture = $3, google_picture = $3, google_access_token = $4, google_refresh_token = $5, updated_at = CURRENT_TIMESTAMP 
-       WHERE google_id = $6 
+       SET email = $1, name = $2, picture = $3, google_picture = $4, google_access_token = $5, google_refresh_token = $6, updated_at = CURRENT_TIMESTAMP 
+       WHERE google_id = $7 
        RETURNING *`,
-      [email, name, picture, tokens.access_token, tokens.refresh_token, googleId]
+      [email, name, picture, picture, tokens.access_token || null, tokens.refresh_token || null, googleId]
     );
     
     const updateTime = Date.now() - updateStartTime;
@@ -594,9 +594,9 @@ router.post('/google', async (req, res) => {
       // Create new user
       const insertResult = await pool.query(
         `INSERT INTO users (google_id, email, name, picture, google_picture, google_access_token) 
-         VALUES ($1, $2, $3, $4, $4, $5) 
+         VALUES ($1, $2, $3, $4, $5, $6) 
          RETURNING *`,
-        [googleId, email, name, picture, accessToken]
+        [googleId, email, name, picture, picture, accessToken || null]
       );
       user = insertResult.rows[0];
       console.log('New user created:', email);
@@ -604,10 +604,10 @@ router.post('/google', async (req, res) => {
       // Update existing user (including email in case it changed)
       const updateResult = await pool.query(
         `UPDATE users 
-         SET email = $1, name = $2, picture = $3, google_picture = $3, google_access_token = $4, updated_at = CURRENT_TIMESTAMP 
-         WHERE google_id = $5 
+         SET email = $1, name = $2, picture = $3, google_picture = $4, google_access_token = $5, updated_at = CURRENT_TIMESTAMP 
+         WHERE google_id = $6 
          RETURNING *`,
-        [email, name, picture, accessToken, googleId]
+        [email, name, picture, picture, accessToken || null, googleId]
       );
       user = updateResult.rows[0];
       console.log('Existing user updated:', email);

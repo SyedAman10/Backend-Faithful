@@ -1102,7 +1102,7 @@ router.delete('/profile/picture', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to delete profile picture',
-      message: error.message
+      message: error.message 
     });
   }
 });
