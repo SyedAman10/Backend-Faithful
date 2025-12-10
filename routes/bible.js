@@ -32,7 +32,7 @@ const TRANSLATION_MAP = {
  */
 function getTranslationId(userVersion) {
   if (!userVersion) return 'KJV'; // Default to KJV
-  
+
   const upperVersion = userVersion.toUpperCase();
   return TRANSLATION_MAP[upperVersion] || upperVersion;
 }
@@ -54,7 +54,7 @@ router.get('/versions', authenticateToken, async (req, res) => {
     });
 
     const response = await axios.get(`${BIBLE_API_BASE}/translations`);
-    
+
     console.log('📥 Bible GO API response received:', {
       status: response.status,
       statusText: response.statusText,
@@ -65,7 +65,7 @@ router.get('/versions', authenticateToken, async (req, res) => {
 
     // Bible GO API returns an array of translation objects
     const translations = response.data || [];
-    
+
     console.log('✅ Bible translations retrieved successfully:', {
       translationCount: translations.length,
       firstThree: translations.slice(0, 3).map(t => ({ id: t.id, name: t.name, abbreviation: t.abbreviation })),
@@ -134,7 +134,7 @@ router.get('/translation/:bible', authenticateToken, async (req, res) => {
 
     console.log('🔑 Fetching Bible Gateway access token...');
     const accessToken = await getBibleGatewayToken();
-    
+
     console.log('🌐 Making request to Bible Gateway API...', {
       url: `${BIBLE_GATEWAY_API_BASE}/bible/${bible}`,
       bible: bible,
@@ -145,7 +145,7 @@ router.get('/translation/:bible', authenticateToken, async (req, res) => {
     const response = await axios.get(`${BIBLE_GATEWAY_API_BASE}/bible/${bible}`, {
       params: { access_token: accessToken }
     });
-    
+
     console.log('📥 Bible Gateway API response received:', {
       status: response.status,
       statusText: response.statusText,
@@ -177,7 +177,7 @@ router.get('/translation/:bible', authenticateToken, async (req, res) => {
       data: error.response?.data,
       timestamp: new Date().toISOString()
     });
-    
+
     if (error.response && error.response.status === 404) {
       console.log('📛 Translation not found:', req.params.bible);
       return res.status(404).json({
@@ -239,7 +239,7 @@ router.get('/passage/:bible/:passage(*)', authenticateToken, async (req, res) =>
 
     console.log('🔑 Fetching Bible Gateway access token...');
     const accessToken = await getBibleGatewayToken();
-    
+
     console.log('🌐 Making request to Bible Gateway API...', {
       url: `${BIBLE_GATEWAY_API_BASE}/bible/osis/${passage}/${bible}`,
       bible: bible,
@@ -251,7 +251,7 @@ router.get('/passage/:bible/:passage(*)', authenticateToken, async (req, res) =>
     const response = await axios.get(`${BIBLE_GATEWAY_API_BASE}/bible/osis/${passage}/${bible}`, {
       params: { access_token: accessToken }
     });
-    
+
     console.log('📥 Bible Gateway API response received:', {
       status: response.status,
       statusText: response.statusText,
@@ -289,7 +289,7 @@ router.get('/passage/:bible/:passage(*)', authenticateToken, async (req, res) =>
       data: error.response?.data,
       timestamp: new Date().toISOString()
     });
-    
+
     if (error.response && error.response.status === 404) {
       console.log('📛 Passage not found:', {
         bible: req.params.bible,
@@ -349,7 +349,7 @@ router.get('/search', authenticateToken, async (req, res) => {
 
     const translationId = getTranslationId(translation);
     const url = `${BIBLE_API_BASE}/search?query=${encodeURIComponent(query)}`;
-    
+
     console.log('🌐 Making search request to Bible GO API...', {
       url: url,
       query: query,
@@ -359,7 +359,7 @@ router.get('/search', authenticateToken, async (req, res) => {
     });
 
     const response = await axios.get(url);
-    
+
     console.log('📥 Bible GO API search response received:', {
       status: response.status,
       statusText: response.statusText,
@@ -452,7 +452,7 @@ router.get('/popular-verses', authenticateToken, async (req, res) => {
       try {
         const url = `${BIBLE_API_BASE}/${version}/books/${verseRef.book}/chapters/${verseRef.chapter}/verses/${verseRef.verse}.json`;
         const response = await axios.get(url);
-        
+
         verses.push({
           book: verseRef.book,
           chapter: verseRef.chapter,
@@ -500,11 +500,11 @@ router.get('/search', authenticateToken, async (req, res) => {
   });
 
   try {
-    const { 
-      q: searchQuery, 
-      version = 'en-kjv', 
-      book, 
-      limit = 10 
+    const {
+      q: searchQuery,
+      version = 'en-kjv',
+      book,
+      limit = 10
     } = req.query;
 
     if (!searchQuery) {
@@ -547,7 +547,7 @@ router.get('/books', authenticateToken, async (req, res) => {
 
   try {
     console.log('🌐 Making request to Bible GO API for books...');
-    
+
     const response = await axios.get(`${BIBLE_API_BASE}/books`);
     const books = response.data || [];
 
@@ -567,7 +567,7 @@ router.get('/books', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Get Bible books error:', error);
-    
+
     // Fallback to hardcoded list if API fails
     console.log('⚠️ Using fallback hardcoded books list');
     const books = [
@@ -611,7 +611,7 @@ router.get('/books', authenticateToken, async (req, res) => {
       { name: 'Haggai', id: 'haggai', testament: 'old', order: 37 },
       { name: 'Zechariah', id: 'zechariah', testament: 'old', order: 38 },
       { name: 'Malachi', id: 'malachi', testament: 'old', order: 39 },
-      
+
       // New Testament
       { name: 'Matthew', id: 'matthew', testament: 'new', order: 40 },
       { name: 'Mark', id: 'mark', testament: 'new', order: 41 },
@@ -661,7 +661,7 @@ router.get('/books', authenticateToken, async (req, res) => {
 // Get Specific Book Details
 router.get('/books/:bookId', authenticateToken, async (req, res) => {
   const { bookId } = req.params;
-  
+
   console.log('📖 Get Book Details Request:', {
     userId: req.user.id,
     bookId: bookId,
@@ -670,7 +670,7 @@ router.get('/books/:bookId', authenticateToken, async (req, res) => {
 
   try {
     console.log('🌐 Making request to Bible GO API for book details...');
-    
+
     const response = await axios.get(`${BIBLE_API_BASE}/books/${bookId}`);
     const book = response.data;
 
@@ -692,7 +692,7 @@ router.get('/books/:bookId', authenticateToken, async (req, res) => {
       stack: error.stack,
       timestamp: new Date().toISOString()
     });
-    
+
     res.status(error.response?.status || 500).json({
       success: false,
       error: 'Failed to retrieve book details',
@@ -706,7 +706,7 @@ router.get('/books/:bookId', authenticateToken, async (req, res) => {
 router.get('/books/:bookId/chapters/:chapterId', authenticateToken, async (req, res) => {
   const { bookId, chapterId } = req.params;
   const { translation = 'KJV' } = req.query;
-  
+
   console.log('📖 Get Chapter Request:', {
     userId: req.user.id,
     bookId: bookId,
@@ -718,9 +718,9 @@ router.get('/books/:bookId/chapters/:chapterId', authenticateToken, async (req, 
   try {
     const translationId = getTranslationId(translation);
     const url = `${BIBLE_API_BASE}/books/${bookId}/chapters/${chapterId}?translation=${translationId}`;
-    
+
     console.log('🌐 Making request to Bible GO API:', { url });
-    
+
     const response = await axios.get(url);
     const chapter = response.data;
 
@@ -746,7 +746,7 @@ router.get('/books/:bookId/chapters/:chapterId', authenticateToken, async (req, 
       stack: error.stack,
       timestamp: new Date().toISOString()
     });
-    
+
     res.status(error.response?.status || 500).json({
       success: false,
       error: 'Failed to retrieve chapter',
@@ -760,7 +760,7 @@ router.get('/books/:bookId/chapters/:chapterId', authenticateToken, async (req, 
 router.get('/books/:bookId/chapters/:chapterId/:verseId', authenticateToken, async (req, res) => {
   const { bookId, chapterId, verseId } = req.params;
   const { translation = 'KJV' } = req.query;
-  
+
   console.log('📖 Get Verse Request:', {
     userId: req.user.id,
     bookId: bookId,
@@ -773,9 +773,9 @@ router.get('/books/:bookId/chapters/:chapterId/:verseId', authenticateToken, asy
   try {
     const translationId = getTranslationId(translation);
     const url = `${BIBLE_API_BASE}/books/${bookId}/chapters/${chapterId}/${verseId}?translation=${translationId}`;
-    
+
     console.log('🌐 Making request to Bible GO API:', { url });
-    
+
     const response = await axios.get(url);
     const verse = response.data;
 
@@ -802,7 +802,7 @@ router.get('/books/:bookId/chapters/:chapterId/:verseId', authenticateToken, asy
       stack: error.stack,
       timestamp: new Date().toISOString()
     });
-    
+
     res.status(error.response?.status || 500).json({
       success: false,
       error: 'Failed to retrieve verse',
@@ -827,7 +827,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
 
     // Get user's Bible version from their profile (automatically from token)
     const userBible = req.user.bible_version || 'KJV'; // Default to KJV
-    
+
     console.log('📚 User Bible version from profile:', {
       userId: userId,
       bibleVersion: userBible,
@@ -873,7 +873,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
 
     // Get verses for the selected category
     const categoryVerses = prayerVerses[category] || prayerVerses['all'];
-    
+
     console.log('📖 Prayer category verses loaded:', {
       category: category,
       versesCount: categoryVerses.length,
@@ -942,7 +942,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
     // Select a random verse from the category
     const randomIndex = Math.floor(Math.random() * categoryVerses.length);
     const randomPassage = categoryVerses[randomIndex];
-    
+
     console.log('📖 Selected verse:', {
       passage: randomPassage,
       category: category,
@@ -953,7 +953,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
     // Parse the reference and fetch from Bible GO API
     // Format examples: "Ps 23:1-4", "John 3:16", "Phil 4:6-7"
     const refMatch = randomPassage.match(/^([A-Za-z0-9\s]+)\s+(\d+):(\d+)(-(\d+))?/);
-    
+
     if (!refMatch) {
       console.error('❌ Failed to parse reference:', randomPassage);
       throw new Error(`Invalid reference format: ${randomPassage}`);
@@ -994,7 +994,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
     };
 
     const bookId = bookIdMap[bookAbbrev];
-    
+
     if (!bookId) {
       console.error('❌ Unknown book abbreviation:', bookAbbrev);
       throw new Error(`Unknown book: ${bookAbbrev}`);
@@ -1002,7 +1002,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
 
     // Get translation ID
     const translationId = getTranslationId(userBible);
-    
+
     console.log('🌐 Fetching verses from Bible GO API...', {
       translation: translationId,
       bookId: bookId,
@@ -1014,14 +1014,14 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
 
     // Fetch verses from Bible GO API
     let passageText = '';
-    
+
     try {
       // Fetch the entire chapter
       const apiUrl = `${BIBLE_API_BASE}/books/${bookId}/chapters/${chapterNum}?translation=${translationId}`;
       console.log('📡 API URL:', apiUrl);
 
       const apiResponse = await axios.get(apiUrl);
-      
+
       console.log('📥 Bible GO API response received:', {
         status: apiResponse.status,
         isArray: Array.isArray(apiResponse.data),
@@ -1032,7 +1032,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
       // Extract the specific verses we need
       // API returns array directly, not wrapped in a verses property
       const verses = Array.isArray(apiResponse.data) ? apiResponse.data : [];
-      
+
       // Find and concatenate the verses in the range
       const verseTexts = [];
       for (let i = verseStart; i <= verseEnd; i++) {
@@ -1041,7 +1041,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
           verseTexts.push(verseObj.verse.trim());
         }
       }
-      
+
       passageText = verseTexts.join(' ');
 
       if (!passageText) {
@@ -1064,7 +1064,7 @@ router.get('/daily-prayer', authenticateToken, async (req, res) => {
         url: apiError.config?.url,
         timestamp: new Date().toISOString()
       });
-      
+
       // Fallback to a simple text if API fails
       passageText = `${randomPassage} (${translationId}) - Unable to fetch verse text at this time.`;
     }
@@ -1178,10 +1178,10 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    
+
     // Get user's Bible version from their profile
     const userBible = req.user.bible_version || 'KJV';
-    
+
     console.log('📚 User Bible version from profile:', {
       userId: userId,
       bibleVersion: userBible,
@@ -1194,43 +1194,43 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
       // Wisdom & Guidance
       'Prov 3:5-6', 'Prov 16:3', 'Prov 4:23', 'Prov 18:10', 'Prov 22:6',
       'Ps 119:105', 'Ps 32:8', 'Ps 25:4-5', 'James 1:5',
-      
+
       // Courage & Strength
       'Josh 1:9', 'Deut 31:6', 'Isa 40:31', 'Isa 41:10', 'Isa 43:2',
       'Phil 4:13', '2Tim 1:7', 'Ps 27:1', 'Ps 18:2',
-      
+
       // Love & Grace
       'John 3:16', 'Rom 8:38-39', 'Eph 2:8-9', '1John 4:9', 'Titus 2:11',
       'Rom 5:8', 'Ps 136:26', 'Lam 3:22-23',
-      
+
       // Joy & Peace
       'Neh 8:10', 'John 16:33', 'Rom 15:13', 'Gal 5:22-23', 'Phil 4:4',
       'Ps 16:11', 'John 14:27', 'Isa 26:3',
-      
+
       // Hope & Trust
       'Jer 29:11', 'Ps 37:4', 'Ps 62:5', 'Rom 8:28', 'Heb 11:1',
       'Ps 130:5', 'Prov 3:5', 'Rom 5:5',
-      
+
       // Purpose & Identity
       'Jer 1:5', 'Eph 2:10', 'Ps 139:14', '1Pet 2:9', 'Gen 1:27',
       'Phil 1:6', '2Cor 5:17', 'Isa 43:1',
-      
+
       // Victory & Overcoming
       'Rom 8:37', '1Cor 15:57', '1John 5:4', 'Phil 4:19', 'Ps 37:23-24',
       'Prov 24:16', 'Mic 7:8',
-      
+
       // Blessing & Prosperity  
       'Num 6:24-26', 'Ps 1:1-3', 'Ps 23:1', 'Mal 3:10', 'Deut 28:2',
       '3John 1:2', 'Ps 84:11',
-      
+
       // Eternal Life & Salvation
       'John 14:6', 'Acts 4:12', 'Rom 10:9', '1John 5:12', 'John 10:10',
       'John 11:25-26', 'Titus 3:5',
-      
+
       // Prayer & Worship
       'Ps 145:18', 'Matt 7:7-8', 'John 4:23-24', 'Ps 100:4', '1Thess 5:16-18',
       'Phil 4:6', 'James 5:16',
-      
+
       // New Beginnings
       'Isa 43:18-19', '2Cor 5:17', 'Rev 21:5', 'Lam 3:22-23', 'Ps 51:10'
     ];
@@ -1272,12 +1272,12 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
     if (todayVerseResult.rows.length > 0) {
       // User already has a verse for today
       const existingVerse = todayVerseResult.rows[0];
-      
+
       // Check if the stored text is valid (not just the reference)
-      const isValidText = existingVerse.text && 
-                         existingVerse.text.length > existingVerse.reference.length &&
-                         existingVerse.text !== existingVerse.reference;
-      
+      const isValidText = existingVerse.text &&
+        existingVerse.text.length > existingVerse.reference.length &&
+        existingVerse.text !== existingVerse.reference;
+
       if (isValidText) {
         // Return existing verse with valid text
         console.log('✅ Returning existing daily verse:', {
@@ -1307,14 +1307,14 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
           storedText: existingVerse.text,
           timestamp: new Date().toISOString()
         });
-        
+
         // Delete the invalid entry
         await pool.query(
           `DELETE FROM user_verse_history 
            WHERE user_id = $1 AND version = $2 AND reference = $3`,
           [userId, userBible, existingVerse.reference]
         );
-        
+
         // Continue to fetch a new verse below
       }
     }
@@ -1338,7 +1338,7 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
 
     // Filter out verses user has already seen
     const unseenVerses = inspirationalVerses.filter(v => !seenVerses.has(v));
-    
+
     console.log('🔍 Filtered verses:', {
       totalInspirationalVerses: inspirationalVerses.length,
       seenByUser: seenVerses.size,
@@ -1348,14 +1348,14 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
 
     // If all verses have been seen, reset and use all verses
     const availableVerses = unseenVerses.length > 0 ? unseenVerses : inspirationalVerses;
-    
+
     if (unseenVerses.length === 0) {
       console.log('🔄 All verses seen, resetting pool');
     }
 
     // Pick a random verse
     const randomPassage = availableVerses[Math.floor(Math.random() * availableVerses.length)];
-    
+
     console.log('🎲 Random verse selected:', {
       passage: randomPassage,
       availableCount: availableVerses.length,
@@ -1379,7 +1379,7 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
 
     // Use Bible Gateway scraping (same as daily-prayer)
     const bibleGatewayUrl = `https://www.biblegateway.com/passage/?search=${encodeURIComponent(randomPassage)}&version=${encodeURIComponent(userBible)}`;
-    
+
     const bibleGatewayResponse = await axios.get(bibleGatewayUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -1387,11 +1387,24 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
     });
 
     const html = bibleGatewayResponse.data;
-    
+
     // Extract verse text (improved extraction method)
-    const verseMatch = html.match(/<div class="passage-content.*?>(.*?)<\/div>/s);
+    // Extract verse text (improved extraction method)
+    // Try multiple patterns to find the verse content
+    // 1. Try text-html class (usually the inner container)
+    let verseMatch = html.match(/<div class=['"][^'"]*text-html[^'"]*['"][^>]*>(.*?)<\/div>/s);
+
+    // 2. Fallback to passage-content (outer container) - handle both single and double quotes
+    if (!verseMatch) {
+      verseMatch = html.match(/<div class=['"]passage-content[^>]*>(.*?)<\/div>/s);
+    }
+
+    // 3. Fallback to passage-text
+    if (!verseMatch) {
+      verseMatch = html.match(/<div class=['"]passage-text[^>]*>(.*?)<\/div>/s);
+    }
     let passageText = randomPassage;
-    
+
     if (verseMatch && verseMatch[1]) {
       // Extract text content
       let extractedText = verseMatch[1]
@@ -1400,6 +1413,7 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
         .replace(/<div class="passage-other-trans".*?<\/div>/gi, '') // Remove other translations
         .replace(/<div class="crossrefs".*?<\/div>/gi, '') // Remove cross-references
         .replace(/<div class="footnotes".*?<\/div>/gi, '') // Remove footnotes
+        .replace(/<a[^>]*class=['"]full-chap-link['"][^>]*>[\s\S]*?<\/a>/gi, '') // Remove full chapter link
         .replace(/<[^>]+>/g, '') // Remove all remaining HTML tags
         .replace(/&nbsp;/g, ' ')
         .replace(/&quot;/g, '"')
@@ -1410,8 +1424,9 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
         .replace(/&rdquo;/g, '"')
         .replace(/&#\d+;/g, '') // Remove HTML entities
         .replace(/\s+/g, ' ')
+        .replace(/Read.*?full.*?chapter/gi, '') // Remove "Read full chapter" text if it remains
         .trim();
-      
+
       // Only use extracted text if it's longer than the reference
       if (extractedText && extractedText.length > randomPassage.length) {
         passageText = extractedText;
@@ -1424,7 +1439,7 @@ router.get('/daily-verse', authenticateToken, async (req, res) => {
     } else {
       console.warn('⚠️ No verse match found in HTML response');
     }
-    
+
     console.log('✅ Verse text extracted:', {
       textLength: passageText.length,
       hasText: passageText.length > randomPassage.length,
@@ -1528,7 +1543,7 @@ router.put('/user-bible-version', authenticateToken, async (req, res) => {
         type: typeof bibleVersion,
         timestamp: new Date().toISOString()
       });
-      
+
       return res.status(400).json({
         success: false,
         error: 'Invalid Bible version format',
@@ -1665,11 +1680,11 @@ router.get('/prayer-history', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { 
-      version = 'all', 
-      category = 'all', 
-      limit = 20, 
-      offset = 0 
+    const {
+      version = 'all',
+      category = 'all',
+      limit = 20,
+      offset = 0
     } = req.query;
 
     // Build query
@@ -1678,7 +1693,7 @@ router.get('/prayer-history', authenticateToken, async (req, res) => {
       FROM user_prayer_history
       WHERE user_id = $1
     `;
-    
+
     const queryParams = [userId];
     let paramCount = 1;
 
@@ -1713,7 +1728,7 @@ router.get('/prayer-history', authenticateToken, async (req, res) => {
       FROM user_prayer_history
       WHERE user_id = $1
     `;
-    
+
     const countParams = [userId];
     let countParamCount = 1;
 
@@ -2089,13 +2104,13 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
     );
 
     const reflectedVerses = new Set(
-      historyResult.rows.map(row => 
+      historyResult.rows.map(row =>
         `${row.book}-${row.chapter}-${row.verse}`
       )
     );
 
     // Filter out verses the user has already reflected on
-    const unReflectedVerses = availableVerses.filter(verse => 
+    const unReflectedVerses = availableVerses.filter(verse =>
       !reflectedVerses.has(`${verse.book}-${verse.chapter}-${verse.verse}`)
     );
 
@@ -2103,14 +2118,14 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
     let selectedVerse;
     if (unReflectedVerses.length === 0) {
       console.log('🔄 User has reflected on all verses in theme, resetting history');
-      
+
       // Clear user's reflection history for this theme and version
       await pool.query(
         `DELETE FROM user_reflection_history 
          WHERE user_id = $1 AND version = $2 AND theme = $3`,
         [userId, version, theme]
       );
-      
+
       // Select from all available verses
       selectedVerse = availableVerses[Math.floor(Math.random() * availableVerses.length)];
     } else {
@@ -2129,7 +2144,7 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
     });
 
     const response = await axios.get(url);
-    
+
     console.log('📥 Bible API response received:', {
       status: response.status,
       hasData: !!response.data,
@@ -2212,7 +2227,7 @@ router.get('/daily-reflection', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Get daily reflection error:', error);
-    
+
     if (error.response && error.response.status === 404) {
       return res.status(404).json({
         success: false,
@@ -2239,11 +2254,11 @@ router.get('/reflection-history', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { 
-      version = 'all', 
-      theme = 'all', 
-      limit = 20, 
-      offset = 0 
+    const {
+      version = 'all',
+      theme = 'all',
+      limit = 20,
+      offset = 0
     } = req.query;
 
     // Build query
@@ -2252,7 +2267,7 @@ router.get('/reflection-history', authenticateToken, async (req, res) => {
       FROM user_reflection_history
       WHERE user_id = $1
     `;
-    
+
     const queryParams = [userId];
     let paramCount = 1;
 
@@ -2287,7 +2302,7 @@ router.get('/reflection-history', authenticateToken, async (req, res) => {
       FROM user_reflection_history
       WHERE user_id = $1
     `;
-    
+
     const countParams = [userId];
     let countParamCount = 1;
 
@@ -3120,9 +3135,9 @@ router.get('/prayer-notes', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { 
-      category = 'all', 
-      limit = 20, 
+    const {
+      category = 'all',
+      limit = 20,
       offset = 0,
       search = '',
       sortBy = 'created_at',
@@ -3140,7 +3155,7 @@ router.get('/prayer-notes', authenticateToken, async (req, res) => {
       FROM user_prayer_notes
       WHERE user_id = $1
     `;
-    
+
     const queryParams = [userId];
     let paramCount = 1;
 
@@ -3178,7 +3193,7 @@ router.get('/prayer-notes', authenticateToken, async (req, res) => {
       FROM user_prayer_notes
       WHERE user_id = $1
     `;
-    
+
     const countParams = [userId];
     let countParamCount = 1;
 
@@ -3502,11 +3517,11 @@ router.post('/daily-activity', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { 
-      versesRead = 0, 
-      prayersSaid = 0, 
-      reflectionsCompleted = 0, 
-      studyHours = 0, 
+    const {
+      versesRead = 0,
+      prayersSaid = 0,
+      reflectionsCompleted = 0,
+      studyHours = 0,
       notesCreated = 0,
       date = new Date().toISOString().split('T')[0]
     } = req.body;
@@ -3581,7 +3596,7 @@ router.get('/daily-activity/stats', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { 
+    const {
       period = '30', // days
       date = new Date().toISOString().split('T')[0]
     } = req.query;
@@ -3703,10 +3718,10 @@ router.get('/daily-activity/history', authenticateToken, async (req, res) => {
 
   try {
     const userId = req.user.id;
-    const { 
-      period = '30', 
-      limit = 30, 
-      offset = 0 
+    const {
+      period = '30',
+      limit = 30,
+      offset = 0
     } = req.query;
 
     const daysBack = parseInt(period);
