@@ -54,34 +54,18 @@ const initializeDatabase = async () => {
     }
 
     // Add local time columns for easy access
+    // Drop old local time columns (they stored formatted strings, not proper timestamps)
+    // We now convert times on the fly based on user's timezone
     try {
       await client.query(`
         ALTER TABLE study_groups 
-        ADD COLUMN IF NOT EXISTS scheduled_time_local TEXT
+        DROP COLUMN IF EXISTS scheduled_time_local,
+        DROP COLUMN IF EXISTS next_occurrence_local,
+        DROP COLUMN IF EXISTS recurrence_end_date_local
       `);
-      console.log('✅ Added scheduled_time_local column');
+      console.log('✅ Dropped redundant local time columns from study_groups');
     } catch (error) {
-      console.log('ℹ️ scheduled_time_local column:', error.message);
-    }
-
-    try {
-      await client.query(`
-        ALTER TABLE study_groups 
-        ADD COLUMN IF NOT EXISTS next_occurrence_local TEXT
-      `);
-      console.log('✅ Added next_occurrence_local column');
-    } catch (error) {
-      console.log('ℹ️ next_occurrence_local column:', error.message);
-    }
-
-    try {
-      await client.query(`
-        ALTER TABLE study_groups 
-        ADD COLUMN IF NOT EXISTS recurrence_end_date_local TEXT
-      `);
-      console.log('✅ Added recurrence_end_date_local column');
-    } catch (error) {
-      console.log('ℹ️ recurrence_end_date_local column:', error.message);
+      console.log('ℹ️ Could not drop local time columns:', error.message);
     }
 
     try {
@@ -332,25 +316,6 @@ const initializeDatabase = async () => {
         UNIQUE(group_id, user_id) -- One request per user per group
       )
     `);
-
-    // Create study_group_invitations table if not exists
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS study_group_invitations (
-        id SERIAL PRIMARY KEY,
-        group_id INTEGER NOT NULL,
-        email VARCHAR(255) NOT NULL,
-        user_id INTEGER, -- NULL if user doesn't exist in system yet
-        status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'accepted', 'declined'
-        invited_by INTEGER NOT NULL,
-        invited_at TIMESTAMP DEFAULT NOW(),
-        responded_at TIMESTAMP,
-        FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(group_id, email) -- One invitation per email per group
-      )
-    `);
-    console.log('✅ study_group_invitations table created/verified');
 
     // Create user_prayer_history table if not exists
     await client.query(`
