@@ -421,62 +421,82 @@ router.post('/create', authenticateToken, async (req, res) => {
         [group.id, creatorId]
       );
 
-      // Add invited users as members if they exist in the system
+      // Send invitations to invited users (don't auto-add them as members)
       if (attendeeEmails.length > 0) {
+        const { sendStudyGroupInvitation } = require('../utils/emailService');
+        const crypto = require('crypto');
+
+        // Get creator name for the invitation email
+        const creatorResult = await client.query(
+          'SELECT name FROM users WHERE id = $1',
+          [creatorId]
+        );
+        const creatorName = creatorResult.rows[0]?.name || 'Someone';
+
         for (const email of attendeeEmails) {
           try {
+            // Skip if inviting themselves
+            const selfCheckResult = await client.query(
+              'SELECT id FROM users WHERE id = $1 AND email = $2',
+              [creatorId, email]
+            );
+            
+            if (selfCheckResult.rows.length > 0) {
+              console.log('ℹ️ Skipping self-invitation:', email);
+              continue;
+            }
+
             // Check if user exists in the system
             const invitedUserResult = await client.query(
-              'SELECT id FROM users WHERE email = $1',
+              'SELECT id, name FROM users WHERE email = $1',
               [email]
             );
 
-            if (invitedUserResult.rows.length > 0) {
-              const invitedUserId = invitedUserResult.rows[0].id;
-              
-              // Check if user is already a member (including inactive members)
-              const existingMemberResult = await client.query(
-                'SELECT id, is_active FROM study_group_members WHERE group_id = $1 AND user_id = $2',
-                [group.id, invitedUserId]
-              );
+            const invitedUserId = invitedUserResult.rows.length > 0 
+              ? invitedUserResult.rows[0].id 
+              : null;
 
-              if (existingMemberResult.rows.length > 0) {
-                const existingMember = existingMemberResult.rows[0];
-                
-                if (existingMember.is_active) {
-                  console.log('ℹ️ User already an active member:', email);
-                } else {
-                  // Reactivate the member
-                  await client.query(
-                    'UPDATE study_group_members SET is_active = true, joined_at = CURRENT_TIMESTAMP WHERE group_id = $1 AND user_id = $2',
-                    [group.id, invitedUserId]
-                  );
-                  
-                  console.log('✅ Reactivated existing member:', {
-                    groupId: group.id,
-                    userId: invitedUserId,
-                    email: email
-                  });
-                }
-              } else {
-                // Add as new member
-                await client.query(
-                  `INSERT INTO study_group_members (group_id, user_id, role) 
-                   VALUES ($1, $2, 'member')`,
-                  [group.id, invitedUserId]
-                );
+            // Generate invitation token
+            const invitationToken = crypto.randomBytes(32).toString('hex');
 
-                console.log('✅ Added new member to study group:', {
-                  groupId: group.id,
-                  userId: invitedUserId,
-                  email: email
-                });
-              }
+            // Create invitation record
+            await client.query(
+              `INSERT INTO study_group_invitations (group_id, email, user_id, invited_by, status)
+               VALUES ($1, $2, $3, $4, 'pending')
+               ON CONFLICT (group_id, email) DO UPDATE 
+               SET status = 'pending', invited_at = CURRENT_TIMESTAMP`,
+              [group.id, email, invitedUserId, creatorId]
+            );
+
+            // Send invitation email
+            const emailResult = await sendStudyGroupInvitation(
+              email,
+              {
+                id: group.id,
+                title,
+                description,
+                scheduledTime,
+                meetLink: group.meet_link
+              },
+              creatorName,
+              invitationToken
+            );
+
+            if (emailResult.success) {
+              console.log('✅ Invitation sent successfully:', {
+                groupId: group.id,
+                email: email,
+                userId: invitedUserId,
+                hasAccount: !!invitedUserId
+              });
             } else {
-              console.log('ℹ️ Invited user not found in system:', email);
+              console.warn('⚠️ Failed to send invitation email:', {
+                email: email,
+                reason: emailResult.message
+              });
             }
           } catch (error) {
-            console.warn('⚠️ Failed to add invited user:', email, error.message);
+            console.warn('⚠️ Failed to process invitation for:', email, error.message);
           }
         }
       }
@@ -875,61 +895,82 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
         [group.id, creatorId]
       );
 
-      // Add invited users as members
+      // Send invitations to invited users (don't auto-add them as members)
       if (attendeeEmails.length > 0) {
+        const { sendStudyGroupInvitation } = require('../utils/emailService');
+        const crypto = require('crypto');
+
+        // Get creator name for the invitation email
+        const creatorResult = await client.query(
+          'SELECT name FROM users WHERE id = $1',
+          [creatorId]
+        );
+        const creatorName = creatorResult.rows[0]?.name || 'Someone';
+
         for (const email of attendeeEmails) {
           try {
+            // Skip if inviting themselves
+            const selfCheckResult = await client.query(
+              'SELECT id FROM users WHERE id = $1 AND email = $2',
+              [creatorId, email]
+            );
+            
+            if (selfCheckResult.rows.length > 0) {
+              console.log('ℹ️ Skipping self-invitation:', email);
+              continue;
+            }
+
+            // Check if user exists in the system
             const invitedUserResult = await client.query(
-              'SELECT id FROM users WHERE email = $1',
+              'SELECT id, name FROM users WHERE email = $1',
               [email]
             );
 
-            if (invitedUserResult.rows.length > 0) {
-              const invitedUserId = invitedUserResult.rows[0].id;
-              
-              // Check if user is already a member (including inactive members)
-              const existingMemberResult = await client.query(
-                'SELECT id, is_active FROM study_group_members WHERE group_id = $1 AND user_id = $2',
-                [group.id, invitedUserId]
-              );
+            const invitedUserId = invitedUserResult.rows.length > 0 
+              ? invitedUserResult.rows[0].id 
+              : null;
 
-              if (existingMemberResult.rows.length > 0) {
-                const existingMember = existingMemberResult.rows[0];
-                
-                if (existingMember.is_active) {
-                  console.log('ℹ️ User already an active member:', email);
-                } else {
-                  // Reactivate the member
-                  await client.query(
-                    'UPDATE study_group_members SET is_active = true, joined_at = CURRENT_TIMESTAMP WHERE group_id = $1 AND user_id = $2',
-                    [group.id, invitedUserId]
-                  );
-                  
-                  console.log('✅ Reactivated existing member in recurring study group:', {
-                    groupId: group.id,
-                    userId: invitedUserId,
-                    email: email
-                  });
-                }
-              } else {
-                // Add as new member
-                await client.query(
-                  `INSERT INTO study_group_members (group_id, user_id, role) 
-                   VALUES ($1, $2, 'member')`,
-                  [group.id, invitedUserId]
-                );
+            // Generate invitation token
+            const invitationToken = crypto.randomBytes(32).toString('hex');
 
-                console.log('✅ Added new member to recurring study group:', {
-                  groupId: group.id,
-                  userId: invitedUserId,
-                  email: email
-                });
-              }
+            // Create invitation record
+            await client.query(
+              `INSERT INTO study_group_invitations (group_id, email, user_id, invited_by, status)
+               VALUES ($1, $2, $3, $4, 'pending')
+               ON CONFLICT (group_id, email) DO UPDATE 
+               SET status = 'pending', invited_at = CURRENT_TIMESTAMP`,
+              [group.id, email, invitedUserId, creatorId]
+            );
+
+            // Send invitation email
+            const emailResult = await sendStudyGroupInvitation(
+              email,
+              {
+                id: group.id,
+                title,
+                description,
+                scheduledTime: nextOccurrence,
+                meetLink: group.meet_link
+              },
+              creatorName,
+              invitationToken
+            );
+
+            if (emailResult.success) {
+              console.log('✅ Invitation sent successfully to recurring study group:', {
+                groupId: group.id,
+                email: email,
+                userId: invitedUserId,
+                hasAccount: !!invitedUserId
+              });
             } else {
-              console.log('ℹ️ Invited user not found in system:', email);
+              console.warn('⚠️ Failed to send invitation email:', {
+                email: email,
+                reason: emailResult.message
+              });
             }
           } catch (error) {
-            console.warn('⚠️ Failed to add invited user:', email, error.message);
+            console.warn('⚠️ Failed to process invitation for:', email, error.message);
           }
         }
       }
@@ -3367,6 +3408,319 @@ router.get('/themes', authenticateToken, async (req, res) => {
       success: false,
       error: 'Failed to retrieve themes',
       message: error.message
+    });
+  }
+});
+
+// ========== INVITATION MANAGEMENT ENDPOINTS ==========
+
+// Get Pending Invitations API
+router.get('/invitations/pending', authenticateToken, async (req, res) => {
+  console.log('📧 Get Pending Invitations Request:', {
+    userId: req.user.id,
+    email: req.user.email,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const userId = req.user.id;
+
+    // Get all pending invitations for this user
+    const result = await pool.query(
+      `SELECT 
+        i.id, i.group_id, i.email, i.status, i.invited_at,
+        sg.title, sg.description, sg.scheduled_time, sg.meet_link, sg.theme,
+        u.name as inviter_name, u.email as inviter_email,
+        (SELECT COUNT(*) FROM study_group_members WHERE group_id = sg.id AND is_active = true) as current_members,
+        sg.max_participants
+       FROM study_group_invitations i
+       JOIN study_groups sg ON i.group_id = sg.id
+       JOIN users u ON i.invited_by = u.id
+       WHERE i.user_id = $1 AND i.status = 'pending' AND sg.is_active = true
+       ORDER BY i.invited_at DESC`,
+      [userId]
+    );
+
+    console.log('✅ Pending invitations retrieved:', {
+      userId: userId,
+      invitationCount: result.rows.length,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({ 
+      success: true, 
+      data: {
+        invitations: result.rows,
+        count: result.rows.length
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching pending invitations:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch invitations',
+      message: error.message 
+    });
+  }
+});
+
+// Accept/Decline Invitation API
+router.post('/invitations/:invitationId/respond', authenticateToken, async (req, res) => {
+  console.log('📬 Respond to Invitation Request:', {
+    userId: req.user.id,
+    invitationId: req.params.invitationId,
+    response: req.body.response,
+    timestamp: new Date().toISOString()
+  });
+
+  const client = await pool.connect();
+  
+  try {
+    const { invitationId } = req.params;
+    const { response } = req.body; // 'accept' or 'decline'
+    const userId = req.user.id;
+
+    if (!['accept', 'decline'].includes(response)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid response. Must be "accept" or "decline"' 
+      });
+    }
+
+    await client.query('BEGIN');
+
+    // Get invitation
+    const invitationResult = await client.query(
+      `SELECT i.*, sg.title, sg.max_participants, sg.meet_link
+       FROM study_group_invitations i
+       JOIN study_groups sg ON i.group_id = sg.id
+       WHERE i.id = $1 AND i.user_id = $2 AND i.status = 'pending' AND sg.is_active = true`,
+      [invitationId, userId]
+    );
+
+    if (invitationResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ 
+        success: false,
+        error: 'Invitation not found or already responded' 
+      });
+    }
+
+    const invitation = invitationResult.rows[0];
+
+    if (response === 'accept') {
+      // Check if group is full
+      const memberCountResult = await client.query(
+        'SELECT COUNT(*) as count FROM study_group_members WHERE group_id = $1 AND is_active = true',
+        [invitation.group_id]
+      );
+      
+      const currentMembers = parseInt(memberCountResult.rows[0].count);
+      
+      if (currentMembers >= invitation.max_participants) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(400).json({ 
+          success: false,
+          error: 'Study group is full' 
+        });
+      }
+
+      // Check if user is already a member
+      const existingMemberResult = await client.query(
+        'SELECT id, is_active FROM study_group_members WHERE group_id = $1 AND user_id = $2',
+        [invitation.group_id, userId]
+      );
+
+      if (existingMemberResult.rows.length > 0) {
+        const existingMember = existingMemberResult.rows[0];
+        
+        if (existingMember.is_active) {
+          // Already an active member
+          await client.query(
+            'UPDATE study_group_invitations SET status = $1, responded_at = CURRENT_TIMESTAMP WHERE id = $2',
+            ['accepted', invitationId]
+          );
+          
+          await client.query('COMMIT');
+          client.release();
+          
+          return res.json({ 
+            success: true, 
+            message: 'You are already a member of this study group',
+            data: {
+              groupId: invitation.group_id,
+              groupTitle: invitation.title,
+              meetLink: invitation.meet_link
+            }
+          });
+        } else {
+          // Reactivate membership
+          await client.query(
+            'UPDATE study_group_members SET is_active = true, joined_at = CURRENT_TIMESTAMP WHERE group_id = $1 AND user_id = $2',
+            [invitation.group_id, userId]
+          );
+        }
+      } else {
+        // Add user as member
+        await client.query(
+          `INSERT INTO study_group_members (group_id, user_id, role)
+           VALUES ($1, $2, 'member')`,
+          [invitation.group_id, userId]
+        );
+      }
+
+      // Update invitation status to accepted
+      await client.query(
+        'UPDATE study_group_invitations SET status = $1, responded_at = CURRENT_TIMESTAMP WHERE id = $2',
+        ['accepted', invitationId]
+      );
+
+      await client.query('COMMIT');
+      client.release();
+
+      console.log('✅ Invitation accepted:', {
+        userId: userId,
+        groupId: invitation.group_id,
+        invitationId: invitationId,
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ 
+        success: true, 
+        message: 'Invitation accepted successfully',
+        data: {
+          groupId: invitation.group_id,
+          groupTitle: invitation.title,
+          meetLink: invitation.meet_link
+        }
+      });
+    } else {
+      // Decline invitation
+      await client.query(
+        'UPDATE study_group_invitations SET status = $1, responded_at = CURRENT_TIMESTAMP WHERE id = $2',
+        ['declined', invitationId]
+      );
+
+      await client.query('COMMIT');
+      client.release();
+
+      console.log('✅ Invitation declined:', {
+        userId: userId,
+        groupId: invitation.group_id,
+        invitationId: invitationId,
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ 
+        success: true, 
+        message: 'Invitation declined' 
+      });
+    }
+  } catch (error) {
+    await client.query('ROLLBACK');
+    client.release();
+    
+    console.error('❌ Error responding to invitation:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to respond to invitation',
+      message: error.message 
+    });
+  }
+});
+
+// Get Invitation by Token (for email links)
+router.get('/invitations/token/:token', async (req, res) => {
+  console.log('🔗 Get Invitation by Token Request:', {
+    token: req.params.token?.substring(0, 10) + '...',
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { token } = req.params;
+
+    // For now, we'll just return a message that the user needs to log in
+    // In a full implementation, you'd store the token in the invitation record
+    res.json({
+      success: true,
+      message: 'Please log in to view and respond to this invitation'
+    });
+  } catch (error) {
+    console.error('❌ Error fetching invitation by token:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch invitation',
+      message: error.message 
+    });
+  }
+});
+
+// Get All Invitations for a Study Group (admin only)
+router.get('/:groupId/invitations', authenticateToken, async (req, res) => {
+  console.log('📋 Get Group Invitations Request:', {
+    userId: req.user.id,
+    groupId: req.params.groupId,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // Check if user is admin of the group
+    const memberResult = await pool.query(
+      'SELECT role FROM study_group_members WHERE group_id = $1 AND user_id = $2 AND is_active = true',
+      [groupId, userId]
+    );
+
+    if (memberResult.rows.length === 0 || memberResult.rows[0].role !== 'admin') {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Access denied. Only group admins can view invitations' 
+      });
+    }
+
+    // Get all invitations for this group
+    const result = await pool.query(
+      `SELECT 
+        i.id, i.email, i.status, i.invited_at, i.responded_at,
+        u.id as user_id, u.name as user_name,
+        inviter.name as inviter_name
+       FROM study_group_invitations i
+       LEFT JOIN users u ON i.user_id = u.id
+       JOIN users inviter ON i.invited_by = inviter.id
+       WHERE i.group_id = $1
+       ORDER BY 
+         CASE i.status 
+           WHEN 'pending' THEN 1 
+           WHEN 'accepted' THEN 2 
+           WHEN 'declined' THEN 3 
+         END,
+         i.invited_at DESC`,
+      [groupId]
+    );
+
+    console.log('✅ Group invitations retrieved:', {
+      groupId: groupId,
+      invitationCount: result.rows.length,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({ 
+      success: true, 
+      data: {
+        invitations: result.rows,
+        count: result.rows.length
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching group invitations:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch invitations',
+      message: error.message 
     });
   }
 });

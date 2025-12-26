@@ -333,6 +333,25 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Create study_group_invitations table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS study_group_invitations (
+        id SERIAL PRIMARY KEY,
+        group_id INTEGER NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        user_id INTEGER, -- NULL if user doesn't exist in system yet
+        status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'accepted', 'declined'
+        invited_by INTEGER NOT NULL,
+        invited_at TIMESTAMP DEFAULT NOW(),
+        responded_at TIMESTAMP,
+        FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(group_id, email) -- One invitation per email per group
+      )
+    `);
+    console.log('✅ study_group_invitations table created/verified');
+
     // Create user_prayer_history table if not exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_prayer_history (
