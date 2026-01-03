@@ -525,6 +525,7 @@ router.post('/create', authenticateToken, async (req, res) => {
           maxParticipants: maxParticipants,
           scheduledTime: scheduledTime,
           scheduledTimeLocal: displayScheduledTime,
+          scheduled_time_local: displayScheduledTime, // snake_case for frontend
           durationMinutes: durationMinutes,
           isRecurring: finalGroup.is_recurring,
           recurrencePattern: finalGroup.recurrence_pattern,
@@ -533,10 +534,12 @@ router.post('/create', authenticateToken, async (req, res) => {
           recurrenceEndDate: finalGroup.recurrence_end_date,
           nextOccurrence: finalGroup.next_occurrence,
           nextOccurrenceLocal: displayNextOccurrence,
+          next_occurrence_local: displayNextOccurrence, // snake_case for frontend
           requiresApproval: finalGroup.requires_approval,
           attendeeEmails: attendeeEmails,
           createdAt: finalGroup.created_at,
           timeZone: timezoneHeader,
+          timezone: timezoneHeader, // snake_case for frontend
           useLiveKit: finalGroup.use_livekit,
           videoProvider: finalGroup.video_provider,
           livekitRoomName: finalGroup.livekit_room_name
@@ -966,6 +969,7 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
           maxParticipants: maxParticipants,
           startTime: normalizedStartTime,
           startTimeLocal: displayStartTime,
+          scheduled_time_local: displayStartTime, // snake_case for frontend
           originalStartTime: startTime,
           durationMinutes: durationMinutes,
           frequency: frequency,
@@ -973,8 +977,10 @@ router.post('/create-recurring', authenticateToken, async (req, res) => {
           daysOfWeek: daysOfWeek,
           endDate: endDate,
           timeZone: detectedTimeZone,
+          timezone: detectedTimeZone, // snake_case for frontend
           nextOccurrence: finalGroup.next_occurrence,
           nextOccurrenceLocal: displayNextOccurrence,
+          next_occurrence_local: displayNextOccurrence, // snake_case for frontend
           attendeeEmails: attendeeEmails,
           createdAt: finalGroup.created_at
         }
