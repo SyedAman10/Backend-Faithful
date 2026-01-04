@@ -1185,6 +1185,25 @@ router.get('/public', authenticateToken, async (req, res) => {
       };
     }));
 
+    // Log detailed timezone conversion info for first group (for debugging)
+    if (processedGroups.length > 0) {
+      const firstGroup = processedGroups[0];
+      console.log('🕐 TIMEZONE CONVERSION DETAILS (First Public Group):', {
+        groupId: firstGroup.id,
+        title: firstGroup.title,
+        storedInDB: {
+          scheduled_time: firstGroup.scheduled_time,
+          timezone: firstGroup.timezone
+        },
+        viewerTimezone: timezoneHeader,
+        convertedForViewer: {
+          scheduledTimeLocal: firstGroup.scheduledTimeLocal,
+          nextOccurrenceLocal: firstGroup.nextOccurrenceLocal
+        },
+        explanation: `DB stores UTC: ${firstGroup.scheduled_time} | Creator's TZ: ${firstGroup.timezone} | Viewer's TZ: ${timezoneHeader} | Shown to viewer: ${firstGroup.scheduledTimeLocal}`
+      });
+    }
+
     console.log('✅ Public study groups retrieved successfully:', {
       userId: userId,
       groupCount: processedGroups.length,
@@ -1371,6 +1390,25 @@ router.get('/', authenticateToken, async (req, res) => {
         // Include timezone info
         timezone: group.timezone || timezoneHeader
       }));
+
+    // Log detailed timezone conversion info for first group (for debugging)
+    if (processedGroups.length > 0) {
+      const firstGroup = processedGroups[0];
+      console.log('🕐 TIMEZONE CONVERSION DETAILS (First Group):', {
+        groupId: firstGroup.id,
+        title: firstGroup.title,
+        storedInDB: {
+          scheduled_time: firstGroup.scheduled_time,
+          timezone: firstGroup.timezone
+        },
+        viewerTimezone: timezoneHeader,
+        convertedForViewer: {
+          scheduledTimeLocal: firstGroup.scheduledTimeLocal,
+          nextOccurrenceLocal: firstGroup.nextOccurrenceLocal
+        },
+        explanation: `DB stores UTC: ${firstGroup.scheduled_time} | Creator's TZ: ${firstGroup.timezone} | Viewer's TZ: ${timezoneHeader} | Shown to viewer: ${firstGroup.scheduledTimeLocal}`
+      });
+    }
 
     console.log('✅ Study groups retrieved successfully:', {
       userId: userId,
