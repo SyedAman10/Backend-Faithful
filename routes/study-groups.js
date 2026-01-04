@@ -1133,9 +1133,6 @@ router.get('/public', authenticateToken, async (req, res) => {
     const countResult = await pool.query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].total);
 
-    // Detect timezone for display purposes
-    const timezoneHeader = req.headers['x-timezone'] || req.headers['timezone'] || 'UTC';
-
     // Process results to add user status and member details
     const processedGroups = await Promise.all(groupsResult.rows.map(async (group) => {
       // Get detailed member information for each group
@@ -1150,11 +1147,13 @@ router.get('/public', authenticateToken, async (req, res) => {
         [group.id]
       );
 
-      // Helper function to convert UTC time to user's timezone
-      const convertToUserTimezone = (utcTime, userTimezone) => {
+      // Helper function to format time in the CREATOR'S timezone
+      const formatTimeInCreatorTimezone = (utcTime, creatorTimezone) => {
         if (!utcTime) return null;
+        if (!creatorTimezone) creatorTimezone = 'UTC';
+        
         return new Date(utcTime).toLocaleString("en-US", {
-          timeZone: userTimezone,
+          timeZone: creatorTimezone,
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
@@ -1166,13 +1165,13 @@ router.get('/public', authenticateToken, async (req, res) => {
 
       return {
         ...group,
-        // Convert UTC times to user's timezone on the fly
-        scheduledTimeLocal: convertToUserTimezone(group.scheduled_time, timezoneHeader),
-        nextOccurrenceLocal: convertToUserTimezone(group.next_occurrence, timezoneHeader),
-        recurrenceEndDateLocal: convertToUserTimezone(group.recurrence_end_date, timezoneHeader),
-        createdAtLocal: convertToUserTimezone(group.created_at, timezoneHeader),
-        // Include timezone info
-        timezone: group.timezone || timezoneHeader,
+        // Show time in creator's timezone (everyone sees the same time)
+        scheduledTimeLocal: formatTimeInCreatorTimezone(group.scheduled_time, group.timezone),
+        nextOccurrenceLocal: formatTimeInCreatorTimezone(group.next_occurrence, group.timezone),
+        recurrenceEndDateLocal: formatTimeInCreatorTimezone(group.recurrence_end_date, group.timezone),
+        createdAtLocal: formatTimeInCreatorTimezone(group.created_at, group.timezone),
+        // Include timezone info (creator's timezone)
+        timezone: group.timezone || 'UTC',
         members: membersResult.rows,
         userStatus: {
           isMember: !!group.user_role,
@@ -1185,22 +1184,17 @@ router.get('/public', authenticateToken, async (req, res) => {
       };
     }));
 
-    // Log detailed timezone conversion info for first group (for debugging)
+    // Log simplified timezone display for first group (for debugging)
     if (processedGroups.length > 0) {
       const firstGroup = processedGroups[0];
-      console.log('🕐 TIMEZONE CONVERSION DETAILS (First Public Group):', {
+      console.log('🕐 SIMPLIFIED TIMEZONE DISPLAY (First Public Group):', {
         groupId: firstGroup.id,
         title: firstGroup.title,
-        storedInDB: {
-          scheduled_time: firstGroup.scheduled_time,
+        displayedToEveryone: {
+          scheduledTimeLocal: firstGroup.scheduledTimeLocal,
           timezone: firstGroup.timezone
         },
-        viewerTimezone: timezoneHeader,
-        convertedForViewer: {
-          scheduledTimeLocal: firstGroup.scheduledTimeLocal,
-          nextOccurrenceLocal: firstGroup.nextOccurrenceLocal
-        },
-        explanation: `DB stores UTC: ${firstGroup.scheduled_time} | Creator's TZ: ${firstGroup.timezone} | Viewer's TZ: ${timezoneHeader} | Shown to viewer: ${firstGroup.scheduledTimeLocal}`
+        note: `Everyone sees: ${firstGroup.scheduledTimeLocal} (${firstGroup.timezone})`
       });
     }
 
@@ -1210,7 +1204,6 @@ router.get('/public', authenticateToken, async (req, res) => {
       totalCount: totalCount,
       filters: { search, theme, requiresApproval, date },
       pagination: { limit, offset },
-      timezone: timezoneHeader,
       timestamp: new Date().toISOString()
     });
 
@@ -1229,8 +1222,7 @@ router.get('/public', authenticateToken, async (req, res) => {
           theme,
           requiresApproval,
           date
-        },
-        timezone: timezoneHeader
+        }
       }
     });
 
@@ -1362,14 +1354,14 @@ router.get('/', authenticateToken, async (req, res) => {
     const countResult = await pool.query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].total);
 
-    // Detect timezone for display purposes
-    const timezoneHeader = req.headers['x-timezone'] || req.headers['timezone'] || 'UTC';
-    
-    // Helper function to convert UTC time to user's timezone
-    const convertToUserTimezone = (utcTime, userTimezone) => {
+    // Helper function to format time in the CREATOR'S timezone (not viewer's)
+    // This shows time in the timezone where the meeting was created
+    const formatTimeInCreatorTimezone = (utcTime, creatorTimezone) => {
       if (!utcTime) return null;
+      if (!creatorTimezone) creatorTimezone = 'UTC';
+      
       return new Date(utcTime).toLocaleString("en-US", {
-        timeZone: userTimezone,
+        timeZone: creatorTimezone,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -1379,34 +1371,34 @@ router.get('/', authenticateToken, async (req, res) => {
       });
     };
     
-    // Convert times to user's timezone for display
-      const processedGroups = groupsResult.rows.map(group => ({
-        ...group,
-        // Convert UTC times to user's timezone on the fly
-        scheduledTimeLocal: convertToUserTimezone(group.scheduled_time, timezoneHeader),
-        nextOccurrenceLocal: convertToUserTimezone(group.next_occurrence, timezoneHeader),
-        recurrenceEndDateLocal: convertToUserTimezone(group.recurrence_end_date, timezoneHeader),
-        createdAtLocal: convertToUserTimezone(group.created_at, timezoneHeader),
-        // Include timezone info
-        timezone: group.timezone || timezoneHeader
-      }));
+    // Convert times to CREATOR'S timezone for display
+    // Everyone sees the same time with timezone label (e.g., "3pm Eastern Time")
+    const processedGroups = groupsResult.rows.map(group => ({
+      ...group,
+      // Show time in creator's timezone (not viewer's)
+      scheduledTimeLocal: formatTimeInCreatorTimezone(group.scheduled_time, group.timezone),
+      nextOccurrenceLocal: formatTimeInCreatorTimezone(group.next_occurrence, group.timezone),
+      recurrenceEndDateLocal: formatTimeInCreatorTimezone(group.recurrence_end_date, group.timezone),
+      createdAtLocal: formatTimeInCreatorTimezone(group.created_at, group.timezone),
+      // Include timezone info (this is the creator's timezone)
+      timezone: group.timezone || 'UTC'
+    }));
 
-    // Log detailed timezone conversion info for first group (for debugging)
+    // Log timezone display info for first group (for debugging)
     if (processedGroups.length > 0) {
       const firstGroup = processedGroups[0];
-      console.log('🕐 TIMEZONE CONVERSION DETAILS (First Group):', {
+      console.log('🕐 SIMPLIFIED TIMEZONE DISPLAY (First Group):', {
         groupId: firstGroup.id,
         title: firstGroup.title,
         storedInDB: {
-          scheduled_time: firstGroup.scheduled_time,
+          scheduled_time_utc: firstGroup.scheduled_time,
+          creator_timezone: firstGroup.timezone
+        },
+        displayedToEveryone: {
+          scheduledTimeLocal: firstGroup.scheduledTimeLocal,
           timezone: firstGroup.timezone
         },
-        viewerTimezone: timezoneHeader,
-        convertedForViewer: {
-          scheduledTimeLocal: firstGroup.scheduledTimeLocal,
-          nextOccurrenceLocal: firstGroup.nextOccurrenceLocal
-        },
-        explanation: `DB stores UTC: ${firstGroup.scheduled_time} | Creator's TZ: ${firstGroup.timezone} | Viewer's TZ: ${timezoneHeader} | Shown to viewer: ${firstGroup.scheduledTimeLocal}`
+        note: `Everyone sees: ${firstGroup.scheduledTimeLocal} (${firstGroup.timezone})`
       });
     }
 
@@ -1416,7 +1408,6 @@ router.get('/', authenticateToken, async (req, res) => {
       totalCount: totalCount,
       filters: { status, role, search },
       pagination: { limit, offset },
-      timezone: timezoneHeader,
       timestamp: new Date().toISOString()
     });
 
@@ -1434,8 +1425,7 @@ router.get('/', authenticateToken, async (req, res) => {
           status,
           role,
           search
-        },
-        timezone: timezoneHeader
+        }
       }
     });
 
