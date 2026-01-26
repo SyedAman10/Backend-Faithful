@@ -894,19 +894,199 @@ router.get('/stats', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete user account
+// Delete user account (GDPR-compliant hard delete)
 router.delete('/account', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const userEmail = req.user.email;
+  
   console.log('🗑️ Delete User Account Request:', {
-    userId: req.user.id,
+    userId,
+    email: userEmail,
     timestamp: new Date().toISOString()
   });
 
+  const client = await pool.connect();
+  
   try {
-    // Delete user and all related data (cascade will handle related tables)
-    await pool.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+    // Start transaction to ensure all-or-nothing deletion
+    await client.query('BEGIN');
+
+    // 1. Revoke Google Calendar tokens if they exist
+    try {
+      const userTokens = await client.query(
+        'SELECT google_refresh_token FROM users WHERE id = $1',
+        [userId]
+      );
+      
+      if (userTokens.rows.length > 0 && userTokens.rows[0].google_refresh_token) {
+        const { OAuth2Client } = require('google-auth-library');
+        const oauth2Client = new OAuth2Client(
+          process.env.GOOGLE_CLIENT_ID,
+          process.env.GOOGLE_CLIENT_SECRET
+        );
+        
+        try {
+          await oauth2Client.revokeToken(userTokens.rows[0].google_refresh_token);
+          console.log('✅ Google Calendar tokens revoked');
+        } catch (revokeError) {
+          console.warn('⚠️ Could not revoke Google tokens (may be already revoked):', revokeError.message);
+          // Continue with deletion even if token revocation fails
+        }
+      }
+    } catch (tokenError) {
+      console.warn('⚠️ Error during token revocation:', tokenError.message);
+      // Continue with deletion
+    }
+
+    // 2. Delete Prayer Data
+    // Delete prayer responses (includes nested replies via CASCADE)
+    const prayerResponsesResult = await client.query(
+      'DELETE FROM prayer_responses WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${prayerResponsesResult.rowCount} prayer responses`);
+
+    // Delete prayer requests
+    const prayerRequestsResult = await client.query(
+      'DELETE FROM prayer_requests WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${prayerRequestsResult.rowCount} prayer requests`);
+
+    // 3. Delete Study Groups Data
+    // Delete study groups created by user (CASCADE will handle members and join requests)
+    const studyGroupsResult = await client.query(
+      'DELETE FROM study_groups WHERE creator_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${studyGroupsResult.rowCount} study groups`);
+
+    // Remove user from study groups they joined
+    const membershipResult = await client.query(
+      'DELETE FROM study_group_members WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Removed from ${membershipResult.rowCount} study groups`);
+
+    // Delete study group join requests
+    const joinRequestsResult = await client.query(
+      'DELETE FROM study_group_join_requests WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${joinRequestsResult.rowCount} join requests`);
+
+    // 4. Delete Activity & Engagement Data
+    // Delete XP data
+    const xpResult = await client.query(
+      'DELETE FROM user_xp WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted XP data: ${xpResult.rowCount} records`);
+
+    // Delete daily goals
+    const goalsResult = await client.query(
+      'DELETE FROM user_daily_goals WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${goalsResult.rowCount} daily goals records`);
+
+    // Delete activities log
+    const activitiesLogResult = await client.query(
+      'DELETE FROM user_activities_log WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${activitiesLogResult.rowCount} activity log entries`);
+
+    // Delete daily activities
+    const dailyActivitiesResult = await client.query(
+      'DELETE FROM user_daily_activities WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${dailyActivitiesResult.rowCount} daily activity records`);
+
+    // Delete usage stats
+    const usageStatsResult = await client.query(
+      'DELETE FROM user_usage_stats WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted usage stats: ${usageStatsResult.rowCount} records`);
+
+    // Delete streaks
+    const streaksResult = await client.query(
+      'DELETE FROM user_streaks WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted streaks: ${streaksResult.rowCount} records`);
+
+    // Delete streak milestones
+    const milestonesResult = await client.query(
+      'DELETE FROM streak_milestones WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${milestonesResult.rowCount} milestone records`);
+
+    // Delete user sessions
+    const sessionsResult = await client.query(
+      'DELETE FROM user_sessions WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${sessionsResult.rowCount} user sessions`);
+
+    // 5. Delete Bible Study History
+    // Delete prayer history
+    const prayerHistoryResult = await client.query(
+      'DELETE FROM user_prayer_history WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${prayerHistoryResult.rowCount} prayer history records`);
+
+    // Delete reflection history
+    const reflectionHistoryResult = await client.query(
+      'DELETE FROM user_reflection_history WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${reflectionHistoryResult.rowCount} reflection history records`);
+
+    // Delete verse history
+    const verseHistoryResult = await client.query(
+      'DELETE FROM user_verse_history WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${verseHistoryResult.rowCount} verse history records`);
+
+    // Delete weekly study plans
+    const studyPlansResult = await client.query(
+      'DELETE FROM user_weekly_study_plans WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${studyPlansResult.rowCount} study plans`);
+
+    // 6. Delete Prayer Notes
+    const notesResult = await client.query(
+      'DELETE FROM user_prayer_notes WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`🗑️ Deleted ${notesResult.rowCount} prayer notes`);
+
+    // 7. Delete User Account (main record)
+    // This will cascade delete any remaining related data with CASCADE constraints
+    const userResult = await client.query(
+      'DELETE FROM users WHERE id = $1 RETURNING email',
+      [userId]
+    );
+
+    if (userResult.rowCount === 0) {
+      throw new Error('User not found');
+    }
+
+    console.log(`🗑️ Deleted user account: ${userResult.rows[0].email}`);
+
+    // Commit transaction
+    await client.query('COMMIT');
 
     console.log('✅ User account deleted successfully:', {
-      userId: req.user.id,
+      userId,
+      email: userEmail,
       timestamp: new Date().toISOString()
     });
 
@@ -915,12 +1095,23 @@ router.delete('/account', authenticateToken, async (req, res) => {
       message: 'Account deleted successfully' 
     });
   } catch (error) {
-    console.error('❌ Delete account error:', error);
+    // Rollback transaction on error
+    await client.query('ROLLBACK');
+    
+    console.error('❌ Delete account error:', {
+      userId,
+      email: userEmail,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
     res.status(500).json({ 
       success: false,
-      error: 'Failed to delete account',
-      message: error.message 
+      message: 'Failed to delete account'
     });
+  } finally {
+    client.release();
   }
 });
 
