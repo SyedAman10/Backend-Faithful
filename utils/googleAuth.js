@@ -60,7 +60,12 @@ const getValidAccessToken = async (userId) => {
         oauth2Client.setCredentials({ access_token: google_access_token });
         
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-        await calendar.calendarList.list({ maxResults: 1 });
+        // Use events.list so token validation works with calendar.events scope only.
+        await calendar.events.list({
+          calendarId: 'primary',
+          maxResults: 1,
+          singleEvents: true
+        });
         
         return google_access_token; // Token is still valid
       } catch (error) {

@@ -230,7 +230,6 @@ router.get('/google/url', (req, res) => {
     scope: [
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/calendar.events'
     ],
     prompt: 'consent'
@@ -975,9 +974,7 @@ router.get('/google-calendar/url', authenticateToken, (req, res) => {
     scope: [
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/calendar',
-      'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/gmail.readonly' // Gmail access
+      'https://www.googleapis.com/auth/calendar.events'
     ],
     prompt: 'consent',
     state: req.user.id.toString() // Pass user ID in state to link calendar to existing user
@@ -1376,4 +1373,3 @@ router.post('/google-calendar/disconnect', authenticateToken, async (req, res) =
 });
 
 module.exports = router;
-
